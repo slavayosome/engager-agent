@@ -3,7 +3,7 @@
 Local autonomous runner for Engager **agent-led** campaigns. It keeps your
 comment queue stocked without a human in the loop, on your own Claude plan:
 
-- **Hourly no-LLM preflight** over the hosted Engager MCP (per-org API key):
+- **No-LLM preflight** over the hosted Engager MCP (per-org API key):
   queue runway, candidate-pool health, pending incoming comments. Most wakes
   cost nothing and spawn nothing.
 - When there's real headroom, it spawns **headless Claude Code** (`claude -p`)
@@ -11,7 +11,11 @@ comment queue stocked without a human in the loop, on your own Claude plan:
   fully-resolved work order ("campaign 7, batch size 3, reply to ids 11, 12").
 - Every session is **verified against server state** — a session that claims
   success while the queue didn't grow is failed and retried once, narrowed to
-  batch size 1. Three consecutive failed cycles stop the loop loudly.
+  batch size 1. Three consecutive failed cycles halt the loop loudly.
+- It **follows server intent live**: every ~5 minutes it heartbeats
+  `report_runner_status` and obeys the directive that comes back — pause the
+  campaign or flip the kill switch in the dashboard and the runner idles within
+  minutes; delete the campaign (or flip it to server-led) and it halts for good.
 
 All state (candidate backlog, promo/web-facts ratios, runway, pacing) lives
 server-side, so the runner is stateless and crash-safe: kill it anytime,
@@ -35,20 +39,56 @@ npx engager-agent
 ```
 
 The wizard connects (MCP URL + API key with `feed:read` + `messages:write`),
-detects `claude`, picks the drafting model, installs the skill, lets you pick
-an agent-led campaign, and ends with a batch-size-1 dry-run session so the
-whole chain is proven before you walk away.
+detects `claude`, **offers to register the Engager MCP in Claude Code and
+Claude Desktop** (idempotent: it checks what's already registered, skips
+identical entries, and asks before changing anything — Desktop config writes
+are backed up and touch only the `engager` entry), picks the drafting model,
+installs the skill, lets you pick an agent-led campaign, runs a batch-size-1
+dry-run session so the whole chain is proven, and finally offers **always-on
+autostart** (macOS launchd).
+
+Re-run any piece later: `engager-agent config` (full wizard) or
+`engager-agent register` (just the MCP registration).
 
 ## Run
 
 ```
-engager-agent                # the loop (hourly ±5min jitter)
+engager-agent                # the loop (drafting hourly ±5min, control poll every 5min)
 engager-agent --once         # one cycle, exit 0/1 (cron-friendly)
 engager-agent --once --batch 1
 engager-agent config         # re-run the wizard
 ```
 
 Config: `~/.engager/agent.json` (0600). Logs: `~/.engager/logs/YYYY-MM-DD.log`.
+
+## Always on (macOS)
+
+```
+engager-agent service install    # launchd LaunchAgent: runs at login, restarts on crash
+engager-agent service uninstall
+engager-agent stop               # stop AND disable (survives KeepAlive + next login)
+engager-agent start              # re-enable + start
+engager-agent pause --for 2h     # hold drafting without stopping the process
+engager-agent resume             # clear pause/halt markers + restart the service
+```
+
+**Crash vs halt:** launchd restarts crashes (non-zero exits) but never a
+deliberate halt — after 3 consecutive failed cycles or a server *stop*
+directive the runner writes `~/.engager/halted.json`, exits cleanly, and stays
+down until you run `engager-agent resume`. A broken runner is loud, never
+silently restarted.
+
+## Status
+
+```
+engager-agent status         # human-readable: state, last cycle, next wake, service
+engager-agent status --json  # for scripts/agents
+```
+
+The loop also writes `~/.engager/status.json` atomically at every transition,
+and heartbeats the same fields to the server — so any Claude session connected
+to the hosted Engager MCP can answer "how's my runner doing?" via
+`get_runner_status` (the engager-status skill reports it automatically).
 
 ## Safety
 

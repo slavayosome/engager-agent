@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
-import { CONFIG_DEFAULTS, saveConfig, type AgentConfig } from "./config.js";
+import { CONFIG_DEFAULTS, ensureRunnerId, saveConfig, type AgentConfig } from "./config.js";
 import { runCycle } from "./loop.js";
 import { EngagerMcp } from "./mcp.js";
+import { offerRegistration } from "./register.js";
+import { installService } from "./service.js";
 import { skillsRoot, syncSkill } from "./skills.js";
 
 /**
@@ -69,6 +71,11 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       throw new Error("claude CLI not found");
     }
     p.log.info(`Found Claude Code ${claude.stdout.trim()} — sessions run on your Claude plan.`);
+
+    // 2b. Register the hosted MCP in the user's Claude surfaces (idempotent:
+    // detect → skip if identical → confirm before any add/update).
+    await offerRegistration(mcpUrl, apiKey);
+
     const model = must(
       await p.select({
         message: "Drafting model for the hourly sessions",
@@ -112,7 +119,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       await p.select({ message: "Which campaign should this runner drive?", options: lines }),
     ) as number;
 
-    const cfg: AgentConfig = {
+    let cfg: AgentConfig = {
       ...CONFIG_DEFAULTS,
       ...existing,
       mcpUrl,
@@ -122,6 +129,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       campaignId,
     };
     saveConfig(cfg);
+    cfg = ensureRunnerId(cfg);
     p.log.success("Saved ~/.engager/agent.json (0600).");
 
     // 5. Dry-run cycle (batch size 1) — prove the whole chain before walking away.
@@ -131,13 +139,42 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
         initialValue: true,
       }),
     );
+    let dryRunOk = true;
     if (dryRun) {
       const outcome = await runCycle(cfg, { batchOverride: 1 });
       if (outcome.ok) p.log.success(`Dry run OK — ${outcome.note}`);
-      else p.log.warn(`Dry run FAILED — ${outcome.note}. Fix this before arming the loop.`);
+      else {
+        dryRunOk = false;
+        p.log.warn(`Dry run FAILED — ${outcome.note}. Fix this before arming the loop.`);
+      }
     }
 
-    p.outro("Setup complete. Start the loop with: engager-agent");
+    // 6. Autostart (opt-in, only offered when the chain is proven). Deliberate
+    // halts survive service mode: launchd restarts crashes, never a halt.
+    let serviceInstalled = false;
+    if (process.platform === "darwin" && dryRunOk) {
+      const auto = must(
+        await p.confirm({
+          message: "Run engager-agent automatically at login (launchd service, always on)?",
+          initialValue: true,
+        }),
+      );
+      if (auto) {
+        const r = installService();
+        if (r.ok) {
+          serviceInstalled = true;
+          p.log.success(r.note);
+        } else {
+          p.log.error(r.note);
+        }
+      }
+    }
+
+    p.outro(
+      serviceInstalled
+        ? "Setup complete — the service is running. Check it any time with: engager-agent status"
+        : "Setup complete. Start the loop with: engager-agent",
+    );
     return cfg;
   } finally {
     await mcp.close();

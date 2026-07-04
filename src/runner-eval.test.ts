@@ -220,6 +220,25 @@ describe("agent-runner eval — the autonomous cycle contract", () => {
     const out = await runCycle(CFG, {}, fakeDeps(state));
     expect(out.ok).toBe(false);
     expect(out.note).toContain("server-led");
+    expect(out.fatal).toBe(true); // permanent condition → the loop halts, not retries
+    expect(state.orders).toHaveLength(0);
+  });
+
+  it("campaign not found → FATAL (deleted campaigns halt the loop, not the failure budget)", async () => {
+    const state: FakeState = {
+      campaign: { id: 999 }, // listCampaigns returns a different id than CFG.campaignId
+      queued: [10],
+      recommended: 0,
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [],
+    };
+    const out = await runCycle(CFG, {}, fakeDeps(state));
+    expect(out.ok).toBe(false);
+    expect(out.fatal).toBe(true);
+    expect(out.note).toContain("not found");
     expect(state.orders).toHaveLength(0);
   });
 });
