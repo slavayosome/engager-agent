@@ -110,3 +110,19 @@ describe("probeLocal", () => {
     expect(dead).toBeNull();
   });
 });
+
+describe("unwrapSkillFile", () => {
+  it("unwraps the server's {name, path, content} envelope", async () => {
+    const { unwrapSkillFile } = await import("./mcp.js");
+    const envelope = JSON.stringify({ name: "engager-batch", path: "README.md", content: "# hi\n" });
+    expect(unwrapSkillFile(envelope, "engager-batch", "README.md")).toBe("# hi\n");
+  });
+
+  it("passes bare text through, and refuses to unwrap mismatched or lookalike JSON", async () => {
+    const { unwrapSkillFile } = await import("./mcp.js");
+    expect(unwrapSkillFile("# plain markdown", "s", "f.md")).toBe("# plain markdown");
+    // a skill file whose CONTENT is JSON with a content field must survive verbatim
+    const lookalike = JSON.stringify({ name: "other", path: "x", content: "nope" });
+    expect(unwrapSkillFile(lookalike, "engager-batch", "README.md")).toBe(lookalike);
+  });
+});

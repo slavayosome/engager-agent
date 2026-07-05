@@ -161,15 +161,36 @@ export class EngagerMcp {
 
   async skillFile(name: string, path: string): Promise<string> {
     if (!this.client) throw new Error("not connected");
-    // get_skill_file returns the file verbatim (not JSON-wrapped).
     const res = (await this.client.callTool({ name: "get_skill_file", arguments: { name, path } })) as {
       isError?: boolean;
       content?: Array<{ type: string; text?: string }>;
     };
     const text = res.content?.find((c) => c.type === "text")?.text ?? "";
     if (res.isError) throw new Error(`get_skill_file ${name}/${path}: ${truncate(text, 200)}`);
-    return text;
+    return unwrapSkillFile(text, name, path);
   }
+}
+
+/**
+ * The server's get_skill_file wraps the file as JSON {name, path, content}
+ * (that's what jsonResult produces); accept a bare-text body too so a future
+ * verbatim server also verifies. The unwrap is STRICT (name+path must echo the
+ * request) so a skill file whose own content happens to be JSON with a
+ * `content` field can never be mis-unwrapped. Discovered the hard way: sha256
+ * verification failed on every fresh install because the CLI hashed the
+ * envelope, not the file — invisible on machines where the skills already
+ * existed with matching hashes (sync skips the download entirely).
+ */
+export function unwrapSkillFile(text: string, name: string, path: string): string {
+  try {
+    const parsed = JSON.parse(text) as { name?: unknown; path?: unknown; content?: unknown };
+    if (parsed && parsed.name === name && parsed.path === path && typeof parsed.content === "string") {
+      return parsed.content;
+    }
+  } catch {
+    /* bare text */
+  }
+  return text;
 }
 
 function truncate(s: string, n: number): string {
