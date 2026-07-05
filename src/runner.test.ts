@@ -33,8 +33,8 @@ const CAMPAIGN: CampaignRow = {
   hourlyCommentCap: 3,
 };
 
-describe("computeNeed — hourly micro-batch sizing", () => {
-  it("clamps the server recommendation to the hourly cap", () => {
+describe("computeNeed — one wake-window of sizing", () => {
+  it("clamps the server recommendation to the hourly cap (default hourly cadence)", () => {
     expect(computeNeed(QUEUE, CAMPAIGN)).toBe(3);
   });
   it("takes the recommendation when it is smaller", () => {
@@ -45,6 +45,15 @@ describe("computeNeed — hourly micro-batch sizing", () => {
   });
   it("hourlyCommentCap 0 = uncapped → the recommendation as-is", () => {
     expect(computeNeed(QUEUE, { ...CAMPAIGN, hourlyCommentCap: 0 })).toBe(42);
+  });
+  it("a longer cadence widens the window: 3h × cap 3 = 9", () => {
+    expect(computeNeed(QUEUE, CAMPAIGN, 180)).toBe(9);
+  });
+  it("cadence window still clamps to the recommendation", () => {
+    expect(computeNeed({ ...QUEUE, recommendedBatchSize: 5 }, CAMPAIGN, 180)).toBe(5);
+  });
+  it("sub-hour cadences never shrink below one hour of work", () => {
+    expect(computeNeed(QUEUE, CAMPAIGN, 30)).toBe(3);
   });
 });
 

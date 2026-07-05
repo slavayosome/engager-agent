@@ -19,7 +19,10 @@ export type AgentConfig = {
   model: string;
   /** The agent-led campaign this runner drives. */
   campaignId: number;
-  /** Wake interval. 60 = hourly micro-batches (the design default). */
+  /** Wake interval. 60 = hourly micro-batches (the design default). The runner
+   *  drafts one cadence-window of work per wake (computeNeed). Server-authored
+   *  when the campaign sets agentIntervalMinutes: every heartbeat response can
+   *  carry it, and the loop adopts + persists the pushed value. */
   intervalMinutes: number;
   /** --max-turns guard for each headless session. */
   maxTurns: number;

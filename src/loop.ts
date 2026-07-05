@@ -1,4 +1,4 @@
-import type { AgentConfig } from "./config.js";
+import { saveConfig, type AgentConfig } from "./config.js";
 import { controlPoll, type HeartbeatState } from "./heartbeat.js";
 import { log } from "./log.js";
 import { clearHalt, readHalt, readPause, writeHalt } from "./markers.js";
@@ -100,7 +100,7 @@ export async function runCycle(
 
     const pre = await mcp.campaignQueue(cfg.campaignId);
     const replies = await mcp.listIncoming(cfg.campaignId);
-    const need = opts.batchOverride ?? computeNeed(pre, campaign);
+    const need = opts.batchOverride ?? computeNeed(pre, campaign, cfg.intervalMinutes);
 
     if (need === 0 && replies.length === 0) {
       return {
@@ -290,6 +290,22 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
       log(`control poll failed (non-fatal): ${(e as Error).message}`);
     }
     if (directive?.directive === "stop") await haltLoudly(`server: ${directive.reason}`);
+
+    // Adopt a server-authored wake cadence (campaign.agentIntervalMinutes set via
+    // update_campaign / the dashboard) — persisted so restarts keep it. Never let
+    // an already-scheduled far-away wake outlive a shortened cadence.
+    const pushed = directive?.intervalMinutes;
+    if (typeof pushed === "number" && pushed > 0 && Math.round(pushed) !== cfg.intervalMinutes) {
+      const next = Math.round(pushed);
+      log(`server set wake cadence: every ${next} min (was ${cfg.intervalMinutes}) — adopting`);
+      cfg = { ...cfg, intervalMinutes: next };
+      try {
+        saveConfig(cfg);
+      } catch (e) {
+        log(`could not persist cadence (non-fatal): ${(e as Error).message}`);
+      }
+      nextCycleAt = Math.min(nextCycleAt, Math.round(Date.now() + next * 60_000));
+    }
 
     const idleReason = paused
       ? `paused locally${paused.until ? ` until ${new Date(paused.until).toLocaleString()}` : ""} — resume with: engager-agent resume`

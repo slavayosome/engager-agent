@@ -8,7 +8,7 @@ import {
   statusCommand,
   stopCommand,
 } from "./commands.js";
-import { ensureRunnerId, loadConfig, loadPartialConfig } from "./config.js";
+import { ensureRunnerId, loadConfig, loadPartialConfig, saveConfig } from "./config.js";
 import { controlPoll } from "./heartbeat.js";
 import { log } from "./log.js";
 import { runCycle, runLoop } from "./loop.js";
@@ -38,6 +38,7 @@ function version(): string {
  *   engager-agent --once          run a single cycle and exit (cron-friendly)
  *   engager-agent --once --batch N  override the batch size for that cycle
  *   engager-agent --campaign ID   override the configured campaign
+ *   engager-agent --interval N|Nh  set + persist the wake cadence (minutes, or hours with "h")
  *   engager-agent --service       loop in service mode (used by the launchd plist)
  *   engager-agent --version       print the version and exit
  */
@@ -118,6 +119,21 @@ async function main(): Promise<void> {
 
   const campaignOverride = val("--campaign");
   if (campaignOverride) cfg = { ...cfg, campaignId: Number(campaignOverride) };
+
+  // Persisted cadence override: "90" = minutes, "2h" = hours. Local seed only —
+  // when the campaign carries a server-authored cadence, the next heartbeat wins.
+  const intervalOverride = val("--interval");
+  if (intervalOverride) {
+    const m = /^(\d+(?:\.\d+)?)(h)?$/i.exec(intervalOverride.trim());
+    const minutes = m ? Math.round(Number(m[1]) * (m[2] ? 60 : 1)) : NaN;
+    if (!Number.isFinite(minutes) || minutes < 15 || minutes > 1440) {
+      log(`--interval must be 15..1440 minutes (or 1h..24h), got "${intervalOverride}"`);
+      process.exit(1);
+    }
+    cfg = { ...cfg, intervalMinutes: minutes };
+    saveConfig(cfg);
+    log(`wake cadence set: every ${minutes} min (persisted)`);
+  }
 
   if (has("--once")) {
     const batch = val("--batch");

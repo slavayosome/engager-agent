@@ -195,6 +195,33 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       await p.select({ message: "Which campaign should this runner drive?", options: lines }),
     ) as number;
 
+    // 4b. Wake cadence — how often the runner wakes and how far ahead it drafts
+    // (one cadence-window of work per wake). Server-authored from then on: the
+    // campaign setting is pushed back in every heartbeat, so it stays editable
+    // from the dashboard / update_campaign without re-running this wizard.
+    const intervalMinutes = Number(
+      must(
+        await p.select({
+          message: "Wake cadence — how often should the runner wake and draft?",
+          initialValue: String(existing?.intervalMinutes ?? CONFIG_DEFAULTS.intervalMinutes),
+          options: [
+            { value: "60", label: "every hour — hourly micro-batches (recommended)" },
+            { value: "120", label: "every 2 hours" },
+            { value: "180", label: "every 3 hours" },
+            { value: "240", label: "every 4 hours" },
+            { value: "360", label: "every 6 hours" },
+          ],
+        }),
+      ) as string,
+    );
+    try {
+      // Best-effort: seed the server-side setting so heartbeats echo it back.
+      // A read-only key or an older server just keeps the local value.
+      await mcp.call("update_campaign", { id: campaignId, agentIntervalMinutes: intervalMinutes });
+    } catch {
+      /* local setting still applies */
+    }
+
     let cfg: AgentConfig = {
       ...CONFIG_DEFAULTS,
       ...existing,
@@ -203,6 +230,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       cli: "claude",
       model,
       campaignId,
+      intervalMinutes,
     };
     saveConfig(cfg);
     cfg = ensureRunnerId(cfg);
