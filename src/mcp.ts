@@ -24,6 +24,8 @@ export type CampaignQueue = {
   campaignId: number;
   campaignName: string;
   draftingMode: "agent" | "server";
+  /** The single mode toggle: manual = drafts await approval, auto = schedule on submit. */
+  mode?: "auto" | "manual";
   pendingScheduled: number;
   proposedAwaitingApproval: number;
   /** Monotonic all-messages counter (newer servers) — see verify.ts. */

@@ -36,7 +36,9 @@ export type RunnerStatus = {
   consecutiveFailures: number;
   sessionsToday: number;
   nextWakeAt?: number;
+  /** Kept for --json consumers; humans see tokens. */
   lastSessionCostUsd?: number;
+  lastSessionTokens?: { input: number; output: number };
 };
 
 export function statusPath(): string {

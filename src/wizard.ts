@@ -264,10 +264,31 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       }
     }
 
+    // The card shows THIS campaign's real state, not generic prose — fetch a
+    // fresh queue snapshot (the dry run just changed it). Best-effort: if the
+    // read fails we fall back to config-only lines.
+    const picked = agentLed.find((c) => c.id === campaignId);
+    let queueLine: string | null = null;
+    let modeLine: string | null = null;
+    try {
+      const q = await mcp.campaignQueue(campaignId);
+      queueLine = `Queue:     ${q.pendingScheduled} scheduled · runway ${q.runwayDays} day(s) · pool ${q.candidatePool.size}/${q.candidatePool.target} candidates`;
+      modeLine =
+        q.mode === "auto"
+          ? "Approvals: AUTO — submitted drafts schedule themselves (paced by your caps)"
+          : "Approvals: MANUAL — drafts wait for your review (dashboard or an engager-batch session)";
+      if (q.dailyCapacity) {
+        queueLine += ` · up to ${q.dailyCapacity} comments/day`;
+      }
+    } catch {
+      /* card degrades gracefully */
+    }
     p.note(
       [
+        `Campaign:  ${picked?.name ?? `#${campaignId}`}${picked?.hourlyCommentCap ? ` (≤${picked.hourlyCommentCap} comments/hour)` : ""}`,
+        ...(modeLine ? [modeLine] : []),
+        ...(queueLine ? [queueLine] : []),
         `Drafting:  every ~${cfg.intervalMinutes} min when there's headroom, ≤${cfg.dailySessionCap} sessions/day, model ${cfg.model}`,
-        "Approvals: drafts land per your campaign mode (manual → review in dashboard/Claude)",
         'Check:     engager-agent status    · or ask your Claude "how\'s my engager runner?"',
         "Control:   engager-agent pause --for 2h · resume · stop",
         `Logs:      ~/.engager/logs/`,

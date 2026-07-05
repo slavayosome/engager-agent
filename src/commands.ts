@@ -15,6 +15,7 @@ import {
   stopService,
   uninstallService,
 } from "./service.js";
+import { fmtTokens } from "./session.js";
 import { pidAlive, readStatus } from "./status.js";
 
 /**
@@ -92,7 +93,9 @@ export function statusCommand(json: boolean): void {
     }
     lines.push(
       `  sessions today: ${st.sessionsToday} · consecutive failures: ${st.consecutiveFailures}` +
-        (st.lastSessionCostUsd != null ? ` · last session $${st.lastSessionCostUsd.toFixed(2)}` : ""),
+        (st.lastSessionTokens
+          ? ` · last session ${fmtTokens(st.lastSessionTokens)} tokens`
+          : ""),
     );
     if (alive && st.nextWakeAt) {
       lines.push(`  next wake: ${new Date(st.nextWakeAt).toLocaleTimeString()}`);

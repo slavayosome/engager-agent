@@ -243,3 +243,20 @@ describe("buildHeartbeat", () => {
     }
   });
 });
+
+describe("session tokens", () => {
+  it("parseUsage sums input variants and fmtTokens humanizes", async () => {
+    const { parseUsage, fmtTokens } = await import("./session.js");
+    const t = parseUsage({
+      input_tokens: 1200,
+      cache_creation_input_tokens: 30000,
+      cache_read_input_tokens: 14031,
+      output_tokens: 1900,
+    });
+    expect(t).toEqual({ input: 45231, output: 1900 });
+    expect(fmtTokens(t!)).toBe("45.2k in / 1.9k out");
+    expect(fmtTokens({ input: 800, output: 42 })).toBe("800 in / 42 out");
+    expect(parseUsage(undefined)).toBeUndefined();
+    expect(parseUsage({})).toBeUndefined(); // all-zero usage → nothing to show
+  });
+});
