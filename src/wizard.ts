@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import { CONFIG_DEFAULTS, ensureRunnerId, saveConfig, type AgentConfig } from "./config.js";
+import { describeSource, detectEndpoints, type DetectedEndpoint } from "./detect.js";
 import { runCycle } from "./loop.js";
 import { EngagerMcp } from "./mcp.js";
 import { offerRegistration } from "./register.js";
@@ -8,39 +9,90 @@ import { installService } from "./service.js";
 import { skillsRoot, syncSkill } from "./skills.js";
 
 /**
- * First-run setup: connect → agent CLI + model → skill install → campaign pick
- * → save → prove the whole chain with a batch-size-1 dry cycle before arming
- * the schedule. Every step verifies live; nothing is taken on faith.
+ * First-run setup: preflight (claude CLI is a hard requirement) → pick a
+ * detected endpoint (Claude Desktop/Code configs, local dev server, cloud
+ * default — manual URL as the escape hatch) → connect → model → skill install
+ * → campaign pick → save → prove the whole chain with a batch-size-1 dry cycle
+ * before arming the schedule. Every step verifies live; nothing is taken on
+ * faith.
  */
 export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentConfig> {
   p.intro("engager-agent — autonomous drafting runner");
 
-  // 1. Connect + verify (clear error taxonomy: bad URL vs bad key vs scopes).
+  // 0. Preflight — without the claude CLI nothing downstream can work, so say
+  // so BEFORE asking the user for anything.
+  const claude = spawnSync("claude", ["--version"], { encoding: "utf8" });
+  if (claude.status !== 0) {
+    p.log.error(
+      "engager-agent drives headless Claude Code sessions — the `claude` CLI is required and was not found on your PATH.\n" +
+        "Install it, then re-run this wizard:\n" +
+        "  npm install -g @anthropic-ai/claude-code   (or see https://claude.com/claude-code)",
+    );
+    p.outro("Setup cannot continue without Claude Code.");
+    process.exit(1);
+  }
+  p.log.info(`Claude Code ${claude.stdout.trim()} detected — sessions run on your Claude plan.`);
+
+  // 1. Endpoint — offer what the machine already knows before asking for URLs.
+  const sDetect = p.spinner();
+  sDetect.start("Looking for existing Engager connections…");
+  const detected = await detectEndpoints(existing);
+  sDetect.stop(
+    detected.some((d) => d.source !== "cloud")
+      ? "Found existing Engager connection(s) on this machine."
+      : "No existing connections found — Engager Cloud offered as the default.",
+  );
+
   let mcpUrl = "";
   let apiKey = "";
   let mcp: EngagerMcp | null = null;
   let campaigns: Awaited<ReturnType<EngagerMcp["listCampaigns"]>> = [];
+  /** Keys that already failed a live connect — never silently reuse them again. */
+  const burntKeys = new Set<string>();
   while (!mcp) {
-    mcpUrl = must(
-      await p.text({
-        message: "Engager MCP endpoint",
-        placeholder: "https://<your-engager-host>/mcp",
-        initialValue: existing?.mcpUrl ?? "",
-        validate: (v) => {
-          try {
-            new URL(v);
-            return undefined;
-          } catch {
-            return "enter a full URL, e.g. https://host/mcp";
-          }
-        },
+    const MANUAL = -1;
+    const choice = must(
+      await p.select({
+        message: "Which Engager should this runner connect to?",
+        options: [
+          ...detected.map((d, i) => ({
+            value: i,
+            label: `${d.url} — ${describeSource(d)}${d.apiKey && !burntKeys.has(d.apiKey) ? " (API key found, no paste needed)" : ""}`,
+          })),
+          { value: MANUAL, label: "Other — enter a URL manually" },
+        ],
       }),
-    );
-    apiKey = must(
-      await p.password({
-        message: "API key (Settings → API keys — needs feed:read + messages:write)",
-      }),
-    );
+    ) as number;
+
+    let picked: DetectedEndpoint | null = choice === MANUAL ? null : (detected[choice] ?? null);
+    if (!picked) {
+      const url = must(
+        await p.text({
+          message: "Engager MCP endpoint",
+          placeholder: "https://<your-engager-host>/mcp",
+          initialValue: existing?.mcpUrl ?? "",
+          validate: (v) => {
+            try {
+              new URL(v);
+              return undefined;
+            } catch {
+              return "enter a full URL, e.g. https://host/mcp";
+            }
+          },
+        }),
+      );
+      picked = { url, source: "cloud" };
+    }
+    mcpUrl = picked.url;
+    apiKey =
+      picked.apiKey && !burntKeys.has(picked.apiKey)
+        ? picked.apiKey
+        : must(
+            await p.password({
+              message: "API key (Settings → API keys — needs feed:read + messages:write)",
+            }),
+          );
+
     const s = p.spinner();
     s.start("Connecting…");
     const candidate = new EngagerMcp(mcpUrl, apiKey);
@@ -51,9 +103,11 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       mcp = candidate;
     } catch (e) {
       const msg = (e as Error).message;
+      const badKey = /401|unauthorized/i.test(msg);
+      if (badKey) burntKeys.add(apiKey); // a reused key that failed → ask next round
       s.stop(
-        /401|unauthorized/i.test(msg)
-          ? "Rejected: the API key is invalid for this endpoint."
+        badKey
+          ? `Rejected: the API key is invalid for this endpoint${picked.apiKey === apiKey ? " (the stored one may be stale — enter a fresh key)" : ""}.`
           : /fetch|ECONN|ENOTFOUND|404/i.test(msg)
             ? "Could not reach the endpoint — check the URL (it should end in /mcp)."
             : `Failed: ${msg}`,
@@ -62,17 +116,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
   }
 
   try {
-    // 2. Agent CLI + model. v1 requires claude; detect it and pick the model.
-    const claude = spawnSync("claude", ["--version"], { encoding: "utf8" });
-    if (claude.status !== 0) {
-      p.log.error(
-        "The `claude` CLI is required (v1 runs sessions via headless Claude Code). Install it, then re-run: https://claude.com/claude-code",
-      );
-      throw new Error("claude CLI not found");
-    }
-    p.log.info(`Found Claude Code ${claude.stdout.trim()} — sessions run on your Claude plan.`);
-
-    // 2b. Register the hosted MCP in the user's Claude surfaces (idempotent:
+    // 2. Register the hosted MCP in the user's Claude surfaces (idempotent:
     // detect → skip if identical → confirm before any add/update).
     await offerRegistration(mcpUrl, apiKey);
 
