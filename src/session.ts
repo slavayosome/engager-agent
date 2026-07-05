@@ -96,13 +96,36 @@ export function parseSummary(text: string): SessionSummary | null {
   return null;
 }
 
+/** Tokens the session consumed. `input` sums fresh + cache-created + cache-read
+ *  input tokens (what the plan/API actually processed); `output` is generated. */
+export type SessionTokens = { input: number; output: number };
+
 export type SessionResult = {
   exitCode: number;
   summary: SessionSummary | null;
   rawResult: string;
+  /** Kept for --json consumers; never shown in human output (it reads as a
+   *  bill, but on subscription auth it's only API-equivalent accounting). */
   costUsd?: number;
+  tokens?: SessionTokens;
   durationMs: number;
 };
+
+/** Sum the envelope's usage block into displayable in/out totals. */
+export function parseUsage(usage: unknown): SessionTokens | undefined {
+  const u = usage as Record<string, unknown> | null | undefined;
+  if (!u || typeof u !== "object") return undefined;
+  const n = (k: string) => (typeof u[k] === "number" ? (u[k] as number) : 0);
+  const input = n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens");
+  const output = n("output_tokens");
+  return input > 0 || output > 0 ? { input, output } : undefined;
+}
+
+/** Human token count: 45231 → "45.2k". */
+export function fmtTokens(t: SessionTokens): string {
+  const k = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(1)}k` : String(x));
+  return `${k(t.input)} in / ${k(t.output)} out`;
+}
 
 /**
  * Spawn the headless session. The MCP config is written to a session-scoped
@@ -137,10 +160,16 @@ export async function runSession(
     // result string; fall back to raw stdout if the envelope is unparseable.
     let rawResult = out.stdout;
     let costUsd: number | undefined;
+    let tokens: SessionTokens | undefined;
     try {
-      const envelope = JSON.parse(out.stdout) as { result?: string; total_cost_usd?: number };
+      const envelope = JSON.parse(out.stdout) as {
+        result?: string;
+        total_cost_usd?: number;
+        usage?: unknown;
+      };
       if (typeof envelope.result === "string") rawResult = envelope.result;
       costUsd = envelope.total_cost_usd;
+      tokens = parseUsage(envelope.usage);
     } catch {
       /* raw stdout */
     }
@@ -149,6 +178,7 @@ export async function runSession(
       summary: parseSummary(rawResult),
       rawResult,
       costUsd,
+      ...(tokens ? { tokens } : {}),
       durationMs: Date.now() - started,
     };
   } finally {

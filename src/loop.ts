@@ -3,7 +3,14 @@ import { controlPoll, type HeartbeatState } from "./heartbeat.js";
 import { log } from "./log.js";
 import { clearHalt, readHalt, readPause, writeHalt } from "./markers.js";
 import { EngagerMcp, type RunnerDirective } from "./mcp.js";
-import { computeNeed, runSession, type SessionResult, type WorkOrder } from "./session.js";
+import {
+  computeNeed,
+  fmtTokens,
+  runSession,
+  type SessionResult,
+  type SessionTokens,
+  type WorkOrder,
+} from "./session.js";
 import { skillsRoot, syncSkill } from "./skills.js";
 import { writeStatus, type CycleInfo, type RunnerState } from "./status.js";
 import { snapshot, verifySession, type Verdict } from "./verify.js";
@@ -36,7 +43,9 @@ export type CycleOutcome = {
   note: string;
   /** A permanent condition (campaign gone/server-led) — halt, don't retry. */
   fatal?: boolean;
+  /** Kept for --json consumers; humans see tokens. */
   costUsd?: number;
+  tokens?: SessionTokens;
 };
 
 /** Injection seam for the deterministic eval harness (evals/agent-runner) —
@@ -126,6 +135,7 @@ export async function runCycle(
     let verdict = verifySession(snapshot(pre), snapshot(post), result.summary, result.exitCode);
     logSession(result, verdict);
     let costUsd = result.costUsd;
+    let tokens = result.tokens;
 
     // 5. One narrowed retry (batch size 1) when the failure mode warrants it.
     if (!verdict.ok && verdict.retryNarrowed && order.batchSize > 1) {
@@ -135,18 +145,27 @@ export async function runCycle(
       verdict = verifySession(snapshot(post), snapshot(post2), retry.summary, retry.exitCode);
       logSession(retry, verdict);
       costUsd = retry.costUsd ?? costUsd;
+      tokens = retry.tokens ?? tokens;
     }
 
-    return { ran: true, ok: verdict.ok, note: verdict.note, ...(costUsd != null ? { costUsd } : {}) };
+    return {
+      ran: true,
+      ok: verdict.ok,
+      note: verdict.note,
+      ...(costUsd != null ? { costUsd } : {}),
+      ...(tokens ? { tokens } : {}),
+    };
   } finally {
     await mcp.close();
   }
 }
 
 function logSession(result: SessionResult, verdict: Verdict): void {
-  const cost = result.costUsd != null ? ` · $${result.costUsd.toFixed(2)}` : "";
+  // Tokens, not dollars: on subscription auth the CLI's total_cost_usd is only
+  // API-equivalent accounting, and reads as a bill when it isn't one.
+  const usage = result.tokens ? ` · ${fmtTokens(result.tokens)}` : "";
   log(
-    `session done in ${Math.round(result.durationMs / 1000)}s${cost} · ${
+    `session done in ${Math.round(result.durationMs / 1000)}s${usage} · ${
       verdict.ok ? "OK" : "FAILED"
     } — ${verdict.note}`,
   );
@@ -171,6 +190,7 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
   let day = new Date().toISOString().slice(0, 10);
   let lastCycle: CycleInfo | undefined;
   let lastCostUsd: number | undefined;
+  let lastTokens: SessionTokens | undefined;
   let nextCycleAt = Date.now(); // first drafting cycle as soon as the directive allows
   let stopping: string | null = null;
 
@@ -205,6 +225,7 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
       sessionsToday,
       ...(nextWakeAt != null ? { nextWakeAt } : {}),
       ...(lastCostUsd != null ? { lastSessionCostUsd: lastCostUsd } : {}),
+      ...(lastTokens ? { lastSessionTokens: lastTokens } : {}),
     });
   };
   const haltLoudly = async (reason: string): Promise<never> => {
@@ -285,6 +306,7 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
         const outcome = await runCycle(cfg);
         lastCycle = { at: Date.now(), ran: outcome.ran, ok: outcome.ok, note: outcome.note };
         if (outcome.costUsd != null) lastCostUsd = outcome.costUsd;
+        if (outcome.tokens) lastTokens = outcome.tokens;
         if (outcome.fatal) await haltLoudly(outcome.note);
         if (outcome.ran) sessionsToday += 1;
         if (!outcome.ok) {
