@@ -213,3 +213,33 @@ describe("fallbackDirective (older servers without report_runner_status)", () =>
     expect(fallbackDirective(campaign(), null, now).directive).toBe("run");
   });
 });
+
+describe("buildHeartbeat", () => {
+  it("rounds every numeric field — jittered float wake times must never bounce off the server schema", async () => {
+    const { buildHeartbeat } = await import("./heartbeat.js");
+    const hb = buildHeartbeat(
+      {
+        mcpUrl: "https://m/mcp",
+        apiKey: "k",
+        cli: "claude",
+        model: "sonnet",
+        campaignId: 7,
+        intervalMinutes: 60,
+        maxTurns: 80,
+        dailySessionCap: 24,
+        runnerId: "r1",
+      },
+      "0.3.2",
+      {
+        state: "sleeping",
+        lastCycle: { at: 1751700000123.75, ran: true, ok: true, note: "x" },
+        consecutiveFailures: 0,
+        sessionsToday: 1,
+        nextWakeAt: 1751703600456.4200001, // Date.now() + interval + Math.random() jitter
+      },
+    );
+    for (const k of ["intervalMinutes", "lastCycleAt", "consecutiveFailures", "sessionsToday", "nextWakeAt"] as const) {
+      expect(Number.isInteger(hb[k]), `${k} must be an integer`).toBe(true);
+    }
+  });
+});

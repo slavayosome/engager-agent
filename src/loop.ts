@@ -305,7 +305,11 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
         await haltLoudly(`${MAX_CONSECUTIVE_FAILURES} consecutive failed cycles`);
       }
       const jitter = (Math.random() - 0.5) * 10 * 60_000; // ±5 min
-      nextCycleAt = Date.now() + Math.max(60_000, cfg.intervalMinutes * 60_000 + jitter);
+      // Round: jitter is a float, and everything downstream (heartbeat schema,
+      // status.json) treats wake times as integer epoch-ms.
+      nextCycleAt = Math.round(
+        Date.now() + Math.max(60_000, cfg.intervalMinutes * 60_000 + jitter),
+      );
       log(`next drafting cycle ~${Math.round((nextCycleAt - Date.now()) / 60_000)} min`);
     } else if (idleReason) {
       log(`idle: ${idleReason}`);
