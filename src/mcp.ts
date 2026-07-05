@@ -26,6 +26,8 @@ export type CampaignQueue = {
   draftingMode: "agent" | "server";
   pendingScheduled: number;
   proposedAwaitingApproval: number;
+  /** Monotonic all-messages counter (newer servers) — see verify.ts. */
+  messagesTotal?: number;
   dailyCapacity: number;
   runwayDays: number;
   recommendedBatchSize: number;

@@ -223,9 +223,22 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
         // investigates and starts explicitly. (Returning null stops the CLI
         // from falling through into the loop.)
         p.log.warn(`Dry run FAILED — ${outcome.note}.`);
-        p.outro(
-          "Setup saved but the loop is NOT armed. Check ~/.engager/logs, then start with: engager-agent",
+        p.note(
+          [
+            "Your setup IS saved — only the always-on loop wasn't armed.",
+            "",
+            "  1. Retry the proof:      engager-agent --once --batch 1",
+            "  2. Check runner state:   engager-agent status",
+            `  3. Read the full log:    ~/.engager/logs/`,
+            '  4. Server-side view:     ask your Claude "how\'s engager doing?"',
+            "",
+            "When a run verifies OK:",
+            "  · start the loop:        engager-agent",
+            "  · run it always-on:      engager-agent service install",
+          ].join("\n"),
+          "Not armed yet — next steps",
         );
+        p.outro("Setup saved. Re-prove the chain, then arm the loop.");
         return null;
       }
     }
@@ -251,10 +264,20 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       }
     }
 
+    p.note(
+      [
+        `Drafting:  every ~${cfg.intervalMinutes} min when there's headroom, ≤${cfg.dailySessionCap} sessions/day, model ${cfg.model}`,
+        "Approvals: drafts land per your campaign mode (manual → review in dashboard/Claude)",
+        'Check:     engager-agent status    · or ask your Claude "how\'s my engager runner?"',
+        "Control:   engager-agent pause --for 2h · resume · stop",
+        `Logs:      ~/.engager/logs/`,
+      ].join("\n"),
+      "What happens now",
+    );
     p.outro(
       serviceInstalled
-        ? "Setup complete — the service is running. Check it any time with: engager-agent status"
-        : "Setup complete — starting the loop now (Ctrl-C stops it; restart later with: engager-agent)",
+        ? "Setup complete — the service is running (starts at login, survives crashes)."
+        : "Setup complete — starting the loop in this terminal now (Ctrl-C stops it; restart later with: engager-agent).",
     );
     return cfg;
   } finally {
