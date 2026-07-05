@@ -60,6 +60,26 @@ export function saveConfig(cfg: AgentConfig): void {
   chmodSync(p, 0o600); // writeFileSync mode is ignored when the file pre-exists
 }
 
+/** Whatever is saved, complete or not — the wizard seeds itself from this so a
+ *  connection made before any campaign existed survives the re-run. */
+export function loadPartialConfig(): Partial<AgentConfig> | null {
+  const p = configPath();
+  if (!existsSync(p)) return null;
+  try {
+    return JSON.parse(readFileSync(p, "utf8")) as Partial<AgentConfig>;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist a campaign-less connection (0600 — it holds the API key). */
+export function savePartialConfig(partial: Partial<AgentConfig>): void {
+  mkdirSync(agentHome(), { recursive: true });
+  const p = configPath();
+  writeFileSync(p, JSON.stringify(partial, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(p, 0o600);
+}
+
 /** Backfill + persist a stable runnerId for configs written before heartbeats. */
 export function ensureRunnerId(cfg: AgentConfig): AgentConfig {
   if (cfg.runnerId) return cfg;

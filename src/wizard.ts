@@ -1,7 +1,14 @@
 import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
-import { CONFIG_DEFAULTS, ensureRunnerId, saveConfig, type AgentConfig } from "./config.js";
+import {
+  CONFIG_DEFAULTS,
+  ensureRunnerId,
+  saveConfig,
+  savePartialConfig,
+  type AgentConfig,
+} from "./config.js";
 import { describeSource, detectEndpoints, type DetectedEndpoint } from "./detect.js";
+import { openBrowser, pollForKey, startDeviceFlow } from "./deviceauth.js";
 import { runCycle } from "./loop.js";
 import { EngagerMcp } from "./mcp.js";
 import { offerRegistration } from "./register.js";
@@ -15,8 +22,13 @@ import { skillsRoot, syncSkill } from "./skills.js";
  * → campaign pick → save → prove the whole chain with a batch-size-1 dry cycle
  * before arming the schedule. Every step verifies live; nothing is taken on
  * faith.
+ *
+ * Returns null when setup finished USEFULLY but incompletely (connected,
+ * registered, skills installed — just no agent-led campaign yet): the user is
+ * handed off to interactive Claude to create one, and a re-run resumes from
+ * the saved partial config.
  */
-export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentConfig> {
+export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentConfig | null> {
   p.intro("engager-agent — autonomous drafting runner");
 
   // 0. Preflight — without the claude CLI nothing downstream can work, so say
@@ -87,11 +99,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
     apiKey =
       picked.apiKey && !burntKeys.has(picked.apiKey)
         ? picked.apiKey
-        : must(
-            await p.password({
-              message: "API key (Settings → API keys — needs feed:read + messages:write)",
-            }),
-          );
+        : await acquireKey(mcpUrl);
 
     const s = p.spinner();
     s.start("Connecting…");
@@ -132,23 +140,47 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       }),
     ) as string;
 
-    // 3. Skill install (sha256-verified; refreshed again at every loop start).
+    // 3. Skill install — the FULL suite (sha256-verified), so the user's
+    // interactive Claude can run setup/brain/campaign/status/tune, not just the
+    // runner's engager-batch (which the loop re-verifies at every start).
     const s2 = p.spinner();
-    s2.start("Installing the engager-batch skill…");
-    const sync = await syncSkill(mcp, "engager-batch", skillsRoot("claude"));
+    s2.start("Installing the Engager skills…");
+    const manifests = await mcp.skillManifests();
+    const installed: string[] = [];
+    for (const m of manifests) {
+      try {
+        await syncSkill(mcp, m.name, skillsRoot("claude"));
+        installed.push(`${m.name} ${m.version}`);
+      } catch (e) {
+        // engager-batch is what the RUNNER executes — that one is fatal.
+        if (m.name === "engager-batch") throw e;
+        p.log.warn(`skill ${m.name}: install failed (${(e as Error).message}) — continuing`);
+      }
+    }
     s2.stop(
-      `engager-batch ${sync.version} in place (${sync.verified} files${
-        sync.updated.length ? `, ${sync.updated.length} updated` : ", all current"
-      }).`,
+      installed.length > 0
+        ? `${installed.length} skill(s) in place: ${installed.join(", ")}.`
+        : "No skills served by this server.",
     );
 
     // 4. Campaign pick — agent-led only (this runner never drives server-led).
+    // Zero campaigns is NOT a failure: everything useful is already done
+    // (connected, registered, skills installed) — save it and hand off to the
+    // user's Claude, where the engager-setup/-campaign skills take over.
     const agentLed = campaigns.filter((c) => c.draftingMode === "agent" && c.status === "active");
     if (agentLed.length === 0) {
-      p.log.error(
-        "No active agent-led campaign found. Create one (draftingMode: agent) in the dashboard or via the engager-campaign skill, then re-run.",
+      savePartialConfig({ ...existing, mcpUrl, apiKey, cli: "claude", model });
+      p.log.info("Connection saved — the one missing piece is an active agent-led campaign.");
+      p.note(
+        "Your Claude now has the Engager MCP + skills. Create your first campaign:\n" +
+          '  · in Claude Desktop or Claude Code, say: "set up engager"\n' +
+          '    (or "create a campaign" if you\'re already set up)\n' +
+          "  · or use the dashboard\n" +
+          "then re-run `engager-agent` — it resumes right here.",
+        "One step left",
       );
-      throw new Error("no agent-led campaign");
+      p.outro("Setup paused, nothing lost — create a campaign, then re-run engager-agent.");
+      return null;
     }
     const lines = await Promise.all(
       agentLed.map(async (c) => {
@@ -223,6 +255,54 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
   } finally {
     await mcp.close();
   }
+}
+
+/**
+ * Get an API key for `mcpUrl`: browser sign-in when the server supports it
+ * (device-auth flow — a full-scope agent key is minted on approval, nothing to
+ * copy), manual paste as the fallback and for older/self-hosted servers.
+ */
+async function acquireKey(mcpUrl: string): Promise<string> {
+  const method = must(
+    await p.select({
+      message: "How do you want to authenticate?",
+      options: [
+        {
+          value: "browser",
+          label: "Sign in with your browser — a key is created for you (recommended)",
+        },
+        { value: "paste", label: "Paste an API key (dashboard → Settings → API keys)" },
+      ],
+    }),
+  );
+  if (method === "browser") {
+    const s = p.spinner();
+    s.start("Requesting a sign-in code…");
+    const start = await startDeviceFlow(mcpUrl);
+    if (!start) {
+      s.stop("This server doesn't support browser sign-in — paste a key instead.");
+    } else {
+      s.stop(`Your code: ${start.userCode}`);
+      p.note(
+        `Opening your browser. Confirm the code matches, then Approve:\n${start.verificationUrl}`,
+        `Code ${start.userCode}`,
+      );
+      openBrowser(start.verificationUrl);
+      const s2 = p.spinner();
+      s2.start("Waiting for approval in the browser…");
+      const result = await pollForKey(mcpUrl, start);
+      if (result.outcome === "approved") {
+        s2.stop("Approved — your key was created and received (revocable in Settings → API keys).");
+        return result.apiKey;
+      }
+      s2.stop(`Browser sign-in didn't complete: ${result.note}.`);
+    }
+  }
+  return must(
+    await p.password({
+      message: "API key (Settings → API keys — needs at least feed:read + messages:write)",
+    }),
+  );
 }
 
 function must<T>(v: T | symbol): T {

@@ -43,13 +43,27 @@ sessions are headless Claude Code; no Codex/Gemini adapters yet), then
 **detects where your Engager already lives** instead of asking for a URL:
 existing entries in Claude Desktop / Claude Code configs (reusing their API
 key — no paste needed), a local dev server if one responds, or the Engager
-Cloud default; manual URL entry stays as the escape hatch. It then **offers to
-register the Engager MCP in Claude Code and Claude Desktop** (idempotent: it
-checks what's already registered, skips identical entries, and asks before
-changing anything — Desktop config writes are backed up and touch only the
-`engager` entry), picks the drafting model, installs the skill, lets you pick
-an agent-led campaign, runs a batch-size-1 dry-run session so the whole chain
-is proven, and finally offers **always-on autostart** (macOS launchd).
+Cloud default; manual URL entry stays as the escape hatch.
+
+When you need a key, pick **"Sign in with your browser"**: the wizard shows a
+short code, opens the dashboard, you click Approve, and a full-scope agent API
+key is minted and delivered automatically (revocable any time in Settings →
+API keys). Pasting a key manually still works, and is the fallback on servers
+without device auth.
+
+It then **offers to register the Engager MCP in Claude Code and Claude
+Desktop** (idempotent: it checks what's already registered, skips identical
+entries, and asks before changing anything — Desktop config writes are backed
+up and touch only the `engager` entry), installs the **entire Engager skill
+suite** (batch, setup, brain, campaign, status, tune — all sha256-verified) so
+your interactive Claude is fully equipped, picks the drafting model, lets you
+pick an agent-led campaign, runs a batch-size-1 dry-run session so the whole
+chain is proven, and finally offers **always-on autostart** (macOS launchd).
+
+**No campaign yet?** Not a dead end: the wizard saves your connection,
+finishes the MCP + skills setup, and hands you off — open Claude and say
+*"set up engager"* (or create a campaign in the dashboard), then re-run
+`engager-agent` and it resumes where it left off.
 
 Re-run any piece later: `engager-agent config` (full wizard) or
 `engager-agent register` (just the MCP registration).

@@ -8,7 +8,7 @@ import {
   statusCommand,
   stopCommand,
 } from "./commands.js";
-import { ensureRunnerId, loadConfig } from "./config.js";
+import { ensureRunnerId, loadConfig, loadPartialConfig } from "./config.js";
 import { controlPoll } from "./heartbeat.js";
 import { log } from "./log.js";
 import { runCycle, runLoop } from "./loop.js";
@@ -57,15 +57,17 @@ async function main(): Promise<void> {
 
   switch (cmd) {
     case "config":
-      await runWizard(loadConfig() ?? undefined);
+      await runWizard(loadConfig() ?? loadPartialConfig() ?? undefined);
       return;
     case "register": {
-      const cfg = loadConfig();
-      if (!cfg) {
+      // A partial (campaign-less) config is enough — registration only needs
+      // the endpoint + key.
+      const partial = loadPartialConfig();
+      if (!partial?.mcpUrl || !partial.apiKey) {
         log("not configured yet — run: engager-agent");
         process.exit(1);
       }
-      await offerRegistration(cfg.mcpUrl, cfg.apiKey);
+      await offerRegistration(partial.mcpUrl, partial.apiKey);
       return;
     }
     case "status":
@@ -101,7 +103,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
   if (!cfg) {
-    cfg = await runWizard();
+    const done = await runWizard(loadPartialConfig() ?? undefined);
+    // null = useful-but-incomplete (connected + registered + skills, no
+    // campaign yet): the wizard already said how to continue — exit cleanly.
+    if (!done) return;
+    cfg = done;
     // The wizard may have installed + started the service; don't double-run.
     if (serviceState().loaded) {
       log("the background service is running — check it any time with: engager-agent status");

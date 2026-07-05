@@ -150,10 +150,13 @@ export class EngagerMcp {
     return this.call<OpsSummary>("get_ops_summary");
   }
 
-  async skillManifest(name: string): Promise<SkillManifest | null> {
+  async skillManifests(): Promise<SkillManifest[]> {
     const res = await this.call<{ skills?: SkillManifest[] } | SkillManifest[]>("list_skills");
-    const skills = Array.isArray(res) ? res : (res.skills ?? []);
-    return skills.find((s) => s.name === name) ?? null;
+    return Array.isArray(res) ? res : (res.skills ?? []);
+  }
+
+  async skillManifest(name: string): Promise<SkillManifest | null> {
+    return (await this.skillManifests()).find((s) => s.name === name) ?? null;
   }
 
   async skillFile(name: string, path: string): Promise<string> {
