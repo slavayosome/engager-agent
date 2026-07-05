@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentConfig } from "./config.js";
 import type { CampaignQueue, CampaignRow, IncomingComment } from "./mcp.js";
+import { skillsRoot } from "./skills.js";
 
 /**
  * One headless drafting session: build a fully-resolved work order (the LLM
@@ -49,11 +50,34 @@ export function buildPrompt(order: WorkOrder): string {
   ].join("\n");
 }
 
+/**
+ * The session's tool surface. The skill's web-facts contract ("use YOUR OWN
+ * web search — SEARCH-THEN-DECIDE") requires real search tools, so WebSearch/
+ * WebFetch are SANCTIONED — without them, headless fact slots either went
+ * unsearched (facts-flagged drafts with zero sources) or the agent improvised
+ * fetches through the old blanket `Bash(node *)`, an unsandboxed side channel.
+ * Bash is now narrowed to the skill's deterministic lint (every invocation
+ * form the skill instruction can produce) — arbitrary node is gone.
+ */
+export function allowedTools(skillsDir: string): string {
+  const lint = "scripts/validate-draft.mjs";
+  return [
+    "mcp__engager__*",
+    "Read",
+    "WebSearch",
+    "WebFetch",
+    `Bash(node ${lint}*)`,
+    `Bash(node ./${lint}*)`,
+    `Bash(node ${skillsDir}/engager-batch/${lint}*)`,
+  ].join(",");
+}
+
 /** argv for the agent CLI. Pure — unit-tested; claude is the only adapter in v1. */
 export function buildCliArgs(
   cfg: Pick<AgentConfig, "cli" | "model" | "maxTurns">,
   prompt: string,
   mcpConfigPath: string,
+  skillsDir: string,
 ): { command: string; args: string[] } {
   if (cfg.cli !== "claude") throw new Error(`unsupported agent CLI: ${cfg.cli}`);
   return {
@@ -66,10 +90,8 @@ export function buildCliArgs(
       "--mcp-config",
       mcpConfigPath,
       "--strict-mcp-config",
-      // The session needs: the Engager MCP tools, Read (skill files), and node
-      // for the skill's deterministic lint (validate-draft.mjs). Nothing else.
       "--allowedTools",
-      "mcp__engager__*,Read,Bash(node *)",
+      allowedTools(skillsDir),
       "--max-turns",
       String(cfg.maxTurns),
       "--output-format",
@@ -154,7 +176,12 @@ export async function runSession(
 
   const started = Date.now();
   try {
-    const { command, args } = buildCliArgs(cfg, buildPrompt(order), mcpConfigPath);
+    const { command, args } = buildCliArgs(
+      cfg,
+      buildPrompt(order),
+      mcpConfigPath,
+      skillsRoot(cfg.cli),
+    );
     const out = await run(command, args, opts.timeoutMs ?? 30 * 60_000);
     // --output-format json → one JSON envelope on stdout with the transcript
     // result string; fall back to raw stdout if the envelope is unparseable.
