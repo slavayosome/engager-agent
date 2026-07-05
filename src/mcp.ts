@@ -42,6 +42,32 @@ export type IncomingComment = {
   status: string;
 };
 
+export type RunnerDirective = {
+  directive: "run" | "idle" | "stop";
+  reason: string;
+};
+
+/** Heartbeat payload for report_runner_status (mirrors ~/.engager/status.json). */
+export type HeartbeatPayload = {
+  runnerId: string;
+  state: string;
+  hostname?: string;
+  version?: string;
+  campaignId?: number;
+  intervalMinutes?: number;
+  lastCycleAt?: number;
+  lastOutcome?: { ran: boolean; ok: boolean; note: string };
+  consecutiveFailures?: number;
+  sessionsToday?: number;
+  nextWakeAt?: number;
+};
+
+export type OpsSummary = {
+  killSwitch: boolean;
+  pausedReason: string | null;
+  pausedUntil: number | null;
+};
+
 export type SkillManifestFile = { path: string; sha256: string };
 export type SkillManifest = {
   name: string;
@@ -105,6 +131,23 @@ export class EngagerMcp {
   /** Stateless page-1 top-up sweep (no LLM, no server drafting side effects). */
   discover(campaignId: number): Promise<unknown> {
     return this.call("discover", { campaignId });
+  }
+
+  /**
+   * Heartbeat: upsert this runner's liveness row and get back the server's
+   * control directive. The caller MUST obey it (run/idle/stop).
+   */
+  async reportStatus(hb: HeartbeatPayload): Promise<RunnerDirective> {
+    const res = await this.call<{ directive: RunnerDirective["directive"]; reason: string }>(
+      "report_runner_status",
+      hb,
+    );
+    return { directive: res.directive, reason: res.reason };
+  }
+
+  /** Kill-switch / org-pause flags (fallback directive source for old servers). */
+  opsSummary(): Promise<OpsSummary> {
+    return this.call<OpsSummary>("get_ops_summary");
   }
 
   async skillManifest(name: string): Promise<SkillManifest | null> {
