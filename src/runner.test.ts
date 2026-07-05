@@ -54,6 +54,7 @@ describe("buildCliArgs — claude adapter", () => {
       { cli: "claude", model: "sonnet", maxTurns: 80 },
       "PROMPT",
       "/tmp/mcp.json",
+      "/home/u/.claude/skills",
     );
     expect(command).toBe("claude");
     expect(args).toEqual([
@@ -65,12 +66,28 @@ describe("buildCliArgs — claude adapter", () => {
       "/tmp/mcp.json",
       "--strict-mcp-config",
       "--allowedTools",
-      "mcp__engager__*,Read,Bash(node *)",
+      "mcp__engager__*,Read,WebSearch,WebFetch," +
+        "Bash(node scripts/validate-draft.mjs*)," +
+        "Bash(node ./scripts/validate-draft.mjs*)," +
+        "Bash(node /home/u/.claude/skills/engager-batch/scripts/validate-draft.mjs*)",
       "--max-turns",
       "80",
       "--output-format",
       "json",
     ]);
+  });
+
+  it("web search is sanctioned, arbitrary node is not", () => {
+    const { args } = buildCliArgs(
+      { cli: "claude", model: "sonnet", maxTurns: 80 },
+      "P",
+      "/tmp/mcp.json",
+      "/s",
+    );
+    const tools = args[args.indexOf("--allowedTools") + 1]!;
+    expect(tools).toContain("WebSearch");
+    expect(tools).toContain("WebFetch");
+    expect(tools).not.toContain("Bash(node *)"); // the old blanket escape hatch
   });
   it("work order is fully resolved in the prompt (no open-ended judgment)", () => {
     const prompt = buildPrompt({ campaignId: 7, batchSize: 3, replyIds: [11, 12] });
