@@ -25,6 +25,8 @@ const CFG: AgentConfig = {
 type FakeState = {
   campaign: Partial<CampaignRow>;
   queued: number[];        // successive snapshots served by campaignQueue
+  /** Optional monotonic messagesTotal per queue read (newer servers). */
+  totals?: number[];
   recommended: number;
   poolSufficient: boolean;
   replies: number[];
@@ -47,13 +49,16 @@ function fakeDeps(state: FakeState): CycleDeps {
       },
     ],
     campaignQueue: async (): Promise<CampaignQueue> => {
-      const queued = state.queued[Math.min(queueReads++, state.queued.length - 1)]!;
+      const read = queueReads++;
+      const queued = state.queued[Math.min(read, state.queued.length - 1)]!;
+      const total = state.totals?.[Math.min(read, state.totals.length - 1)];
       return {
         campaignId: 7,
         campaignName: "c",
         draftingMode: "agent",
         pendingScheduled: queued,
         proposedAwaitingApproval: 0,
+        ...(total != null ? { messagesTotal: total } : {}),
         dailyCapacity: 8,
         runwayDays: queued / 8,
         recommendedBatchSize: state.recommended,
@@ -222,6 +227,45 @@ describe("agent-runner eval — the autonomous cycle contract", () => {
     expect(out.note).toContain("server-led");
     expect(out.fatal).toBe(true); // permanent condition → the loop halts, not retries
     expect(state.orders).toHaveLength(0);
+  });
+
+  it("concurrent publisher drain can't fail an honest session (monotonic messagesTotal)", async () => {
+    // The live repro: batch 1 submitted for real, but the paced publisher
+    // posted one mid-session — queue SIZE read +0 while messagesTotal read +1.
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 10],   // size unchanged: +1 submitted, −1 posted
+      totals: [50, 51],   // the monotonic truth: one new message landed
+      recommended: 1,
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", submitted: 1 } })],
+    };
+    const out = await runCycle(CFG, {}, fakeDeps(state));
+    expect(out.ok).toBe(true);
+    expect(out.note).toContain("+1");
+  });
+
+  it("a lying session is still caught when messagesTotal doesn't grow", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 11],   // size even grew (some other writer) …
+      totals: [50, 50],   // … but THIS session created nothing
+      recommended: 1,
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [
+        session({ summary: { outcome: "ok", submitted: 1 } }),
+        session({ summary: { outcome: "ok", submitted: 1 } }), // narrowed retry
+      ],
+    };
+    const out = await runCycle(CFG, {}, fakeDeps(state));
+    expect(out.ok).toBe(false);
+    expect(out.note).toContain("grew by 0");
   });
 
   it("campaign not found → FATAL (deleted campaigns halt the loop, not the failure budget)", async () => {

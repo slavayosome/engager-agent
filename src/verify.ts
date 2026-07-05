@@ -7,10 +7,30 @@ import type { SessionSummary } from "./session.js";
  * the queue didn't grow is treated as FAILED (and retried narrowed once).
  */
 
-export type QueueSnapshot = { queued: number };
+export type QueueSnapshot = {
+  queued: number;
+  /** Monotonic all-messages counter (newer servers) — drain-proof. */
+  total?: number;
+};
 
 export function snapshot(q: CampaignQueue): QueueSnapshot {
-  return { queued: q.pendingScheduled + q.proposedAwaitingApproval };
+  return {
+    queued: q.pendingScheduled + q.proposedAwaitingApproval,
+    ...(typeof q.messagesTotal === "number" ? { total: q.messagesTotal } : {}),
+  };
+}
+
+/**
+ * The growth the session actually caused. Prefer the MONOTONIC counter: queue
+ * SIZE shrinks whenever the paced publisher posts mid-session, which failed
+ * honest batch-1 sessions ("claimed 1 but the queue grew by 0" — reproduced
+ * live: a post at 09:51 inside a 09:48–09:52 dry run). messagesTotal only ever
+ * grows, so its delta is immune to concurrent drains while still catching
+ * sessions that claim work they never landed.
+ */
+function growth(pre: QueueSnapshot, post: QueueSnapshot): number {
+  if (pre.total != null && post.total != null) return post.total - pre.total;
+  return post.queued - pre.queued;
 }
 
 export type Verdict =
@@ -23,7 +43,7 @@ export function verifySession(
   summary: SessionSummary | null,
   exitCode: number,
 ): Verdict {
-  const delta = post.queued - pre.queued;
+  const delta = growth(pre, post);
 
   if (summary == null) {
     return {
