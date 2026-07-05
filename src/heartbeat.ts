@@ -33,22 +33,25 @@ export function buildHeartbeat(
   version: string,
   s: HeartbeatState,
 ): HeartbeatPayload {
+  // The server schema wants integer epoch-ms; jittered wake times are floats
+  // (±5min × Math.random()) — round EVERY numeric field at this boundary so no
+  // upstream arithmetic can ever bounce a heartbeat off input validation.
   return {
     runnerId: cfg.runnerId ?? "unknown",
     state: s.state,
     hostname: hostname(),
     version,
     campaignId: cfg.campaignId,
-    intervalMinutes: cfg.intervalMinutes,
+    intervalMinutes: Math.round(cfg.intervalMinutes),
     ...(s.lastCycle
       ? {
-          lastCycleAt: s.lastCycle.at,
+          lastCycleAt: Math.round(s.lastCycle.at),
           lastOutcome: { ran: s.lastCycle.ran, ok: s.lastCycle.ok, note: s.lastCycle.note },
         }
       : {}),
-    consecutiveFailures: s.consecutiveFailures,
-    sessionsToday: s.sessionsToday,
-    ...(s.nextWakeAt != null ? { nextWakeAt: s.nextWakeAt } : {}),
+    consecutiveFailures: Math.round(s.consecutiveFailures),
+    sessionsToday: Math.round(s.sessionsToday),
+    ...(s.nextWakeAt != null ? { nextWakeAt: Math.round(s.nextWakeAt) } : {}),
   };
 }
 

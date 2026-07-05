@@ -215,20 +215,25 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
         initialValue: true,
       }),
     );
-    let dryRunOk = true;
     if (dryRun) {
       const outcome = await runCycle(cfg, { batchOverride: 1 });
       if (outcome.ok) p.log.success(`Dry run OK — ${outcome.note}`);
       else {
-        dryRunOk = false;
-        p.log.warn(`Dry run FAILED — ${outcome.note}. Fix this before arming the loop.`);
+        // Do NOT arm anything on a failed proof — config is saved, the user
+        // investigates and starts explicitly. (Returning null stops the CLI
+        // from falling through into the loop.)
+        p.log.warn(`Dry run FAILED — ${outcome.note}.`);
+        p.outro(
+          "Setup saved but the loop is NOT armed. Check ~/.engager/logs, then start with: engager-agent",
+        );
+        return null;
       }
     }
 
     // 6. Autostart (opt-in, only offered when the chain is proven). Deliberate
     // halts survive service mode: launchd restarts crashes, never a halt.
     let serviceInstalled = false;
-    if (process.platform === "darwin" && dryRunOk) {
+    if (process.platform === "darwin") {
       const auto = must(
         await p.confirm({
           message: "Run engager-agent automatically at login (launchd service, always on)?",
@@ -249,7 +254,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
     p.outro(
       serviceInstalled
         ? "Setup complete — the service is running. Check it any time with: engager-agent status"
-        : "Setup complete. Start the loop with: engager-agent",
+        : "Setup complete — starting the loop now (Ctrl-C stops it; restart later with: engager-agent)",
     );
     return cfg;
   } finally {
