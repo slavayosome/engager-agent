@@ -38,14 +38,18 @@ on your machine (the wizard detects it).
 npx engager-agent
 ```
 
-The wizard connects (MCP URL + API key with `feed:read` + `messages:write`),
-detects `claude`, **offers to register the Engager MCP in Claude Code and
-Claude Desktop** (idempotent: it checks what's already registered, skips
-identical entries, and asks before changing anything — Desktop config writes
-are backed up and touch only the `engager` entry), picks the drafting model,
-installs the skill, lets you pick an agent-led campaign, runs a batch-size-1
-dry-run session so the whole chain is proven, and finally offers **always-on
-autostart** (macOS launchd).
+The wizard **fails fast if the `claude` CLI is missing** (a hard requirement —
+sessions are headless Claude Code; no Codex/Gemini adapters yet), then
+**detects where your Engager already lives** instead of asking for a URL:
+existing entries in Claude Desktop / Claude Code configs (reusing their API
+key — no paste needed), a local dev server if one responds, or the Engager
+Cloud default; manual URL entry stays as the escape hatch. It then **offers to
+register the Engager MCP in Claude Code and Claude Desktop** (idempotent: it
+checks what's already registered, skips identical entries, and asks before
+changing anything — Desktop config writes are backed up and touch only the
+`engager` entry), picks the drafting model, installs the skill, lets you pick
+an agent-led campaign, runs a batch-size-1 dry-run session so the whole chain
+is proven, and finally offers **always-on autostart** (macOS launchd).
 
 Re-run any piece later: `engager-agent config` (full wizard) or
 `engager-agent register` (just the MCP registration).
