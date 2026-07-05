@@ -49,6 +49,9 @@ export type IncomingComment = {
 export type RunnerDirective = {
   directive: "run" | "idle" | "stop";
   reason: string;
+  /** Server-authored wake cadence (campaign.agentIntervalMinutes). The runner
+   *  adopts + persists a positive value; null/absent = keep the local setting. */
+  intervalMinutes?: number | null;
 };
 
 /** Heartbeat payload for report_runner_status (mirrors ~/.engager/status.json). */
@@ -142,11 +145,17 @@ export class EngagerMcp {
    * control directive. The caller MUST obey it (run/idle/stop).
    */
   async reportStatus(hb: HeartbeatPayload): Promise<RunnerDirective> {
-    const res = await this.call<{ directive: RunnerDirective["directive"]; reason: string }>(
-      "report_runner_status",
-      hb,
-    );
-    return { directive: res.directive, reason: res.reason };
+    const res = await this.call<{
+      directive: RunnerDirective["directive"];
+      reason: string;
+      intervalMinutes?: number | null;
+    }>("report_runner_status", hb);
+    return {
+      directive: res.directive,
+      reason: res.reason,
+      // Older servers omit it — undefined means "no server opinion", never 0.
+      ...(res.intervalMinutes !== undefined ? { intervalMinutes: res.intervalMinutes } : {}),
+    };
   }
 
   /** Kill-switch / org-pause flags (fallback directive source for old servers). */

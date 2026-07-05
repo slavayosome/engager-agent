@@ -30,11 +30,20 @@ export type SessionSummary = {
   reasons?: string[];
 };
 
-/** Hourly need: never draft past this hour's posting headroom, never past the
- *  server's recommendation, floor at 0. */
-export function computeNeed(queue: CampaignQueue, campaign: CampaignRow): number {
-  const hourly = campaign.hourlyCommentCap > 0 ? campaign.hourlyCommentCap : Infinity;
-  return Math.max(0, Math.min(queue.recommendedBatchSize, hourly));
+/** One wake-window of need: never draft past the cadence-window's posting
+ *  headroom (hourly cap × hours until the next wake), never past the server's
+ *  recommendation, floor at 0. Hourly cadence = the classic hourly micro-batch. */
+export function computeNeed(
+  queue: CampaignQueue,
+  campaign: CampaignRow,
+  intervalMinutes = 60,
+): number {
+  const cadenceHours = Math.max(1, intervalMinutes / 60);
+  const windowCap =
+    campaign.hourlyCommentCap > 0
+      ? Math.ceil(campaign.hourlyCommentCap * cadenceHours)
+      : Infinity;
+  return Math.max(0, Math.min(queue.recommendedBatchSize, windowCap));
 }
 
 export function buildPrompt(order: WorkOrder): string {
