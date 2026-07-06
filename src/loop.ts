@@ -37,6 +37,30 @@ import { snapshot, verifySession, type Verdict } from "./verify.js";
 const MAX_CONSECUTIVE_FAILURES = 3;
 const CONTROL_POLL_MS = 5 * 60_000;
 
+/** The cadence a directive pushes: prefer the STABLE base from newer servers
+ *  (their intervalMinutes is pre-jittered per wake window — persisting it would
+ *  churn config every window). Positive numbers only; undefined = no opinion. */
+export function pushedCadence(
+  d: { intervalMinutes?: number | null; intervalMinutesBase?: number | null } | null,
+): number | undefined {
+  const v = d?.intervalMinutesBase ?? d?.intervalMinutes;
+  return typeof v === "number" && v > 0 ? Math.round(v) : undefined;
+}
+
+/** Delay to the next drafting wake: proportional jitter (0.75–1.25× the
+ *  cadence), never under a minute. A fixed ±5min on an hourly wake still lands
+ *  near the same minute-marks — a bot signature visible through Unipile reads.
+ *  Integer ms: floats in wake times lost every control poll on servers ≤0.3.1. */
+export function nextWakeDelayMs(intervalMinutes: number, rand: () => number = Math.random): number {
+  return Math.round(Math.max(60_000, intervalMinutes * 60_000 * (0.75 + rand() * 0.5)));
+}
+
+/** Delay to the next control tick (4–6.5 min): a heartbeat every 300.000s sharp
+ *  is its own automation signature; isStale's 2×interval+10min window absorbs it. */
+export function controlTickDelayMs(rand: () => number = Math.random): number {
+  return Math.round(CONTROL_POLL_MS * (0.8 + rand() * 0.5));
+}
+
 export type CycleOutcome = {
   ran: boolean;
   ok: boolean;
@@ -294,9 +318,9 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
     // Adopt a server-authored wake cadence (campaign.agentIntervalMinutes set via
     // update_campaign / the dashboard) — persisted so restarts keep it. Never let
     // an already-scheduled far-away wake outlive a shortened cadence.
-    const pushed = directive?.intervalMinutes;
-    if (typeof pushed === "number" && pushed > 0 && Math.round(pushed) !== cfg.intervalMinutes) {
-      const next = Math.round(pushed);
+    const pushed = pushedCadence(directive);
+    if (pushed !== undefined && pushed !== cfg.intervalMinutes) {
+      const next = pushed;
       log(`server set wake cadence: every ${next} min (was ${cfg.intervalMinutes}) — adopting`);
       cfg = { ...cfg, intervalMinutes: next };
       try {
@@ -342,12 +366,7 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         await haltLoudly(`${MAX_CONSECUTIVE_FAILURES} consecutive failed cycles`);
       }
-      const jitter = (Math.random() - 0.5) * 10 * 60_000; // ±5 min
-      // Round: jitter is a float, and everything downstream (heartbeat schema,
-      // status.json) treats wake times as integer epoch-ms.
-      nextCycleAt = Math.round(
-        Date.now() + Math.max(60_000, cfg.intervalMinutes * 60_000 + jitter),
-      );
+      nextCycleAt = Date.now() + nextWakeDelayMs(cfg.intervalMinutes);
       log(`next drafting cycle ~${Math.round((nextCycleAt - Date.now()) / 60_000)} min`);
     } else if (idleReason) {
       log(`idle: ${idleReason}`);
@@ -359,7 +378,7 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
         ? "idle-remote"
         : "sleeping";
     put(state, idleReason ?? undefined, Math.min(nextCycleAt, Date.now() + CONTROL_POLL_MS));
-    await sleep(CONTROL_POLL_MS);
+    await sleep(controlTickDelayMs());
   }
 }
 

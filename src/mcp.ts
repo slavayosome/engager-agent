@@ -50,8 +50,13 @@ export type RunnerDirective = {
   directive: "run" | "idle" | "stop";
   reason: string;
   /** Server-authored wake cadence (campaign.agentIntervalMinutes). The runner
-   *  adopts + persists a positive value; null/absent = keep the local setting. */
+   *  adopts + persists a positive value; null/absent = keep the local setting.
+   *  Servers ≥ the jitter release send this PRE-JITTERED (±25% per wake
+   *  window) — prefer intervalMinutesBase when present. */
   intervalMinutes?: number | null;
+  /** The STABLE configured cadence from newer servers. Persist THIS and jitter
+   *  locally, so config doesn't churn as the server's per-window jitter moves. */
+  intervalMinutesBase?: number | null;
 };
 
 /** Heartbeat payload for report_runner_status (mirrors ~/.engager/status.json). */
@@ -149,12 +154,16 @@ export class EngagerMcp {
       directive: RunnerDirective["directive"];
       reason: string;
       intervalMinutes?: number | null;
+      intervalMinutesBase?: number | null;
     }>("report_runner_status", hb);
     return {
       directive: res.directive,
       reason: res.reason,
-      // Older servers omit it — undefined means "no server opinion", never 0.
+      // Older servers omit these — undefined means "no server opinion", never 0.
       ...(res.intervalMinutes !== undefined ? { intervalMinutes: res.intervalMinutes } : {}),
+      ...(res.intervalMinutesBase !== undefined
+        ? { intervalMinutesBase: res.intervalMinutesBase }
+        : {}),
     };
   }
 
