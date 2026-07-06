@@ -213,3 +213,33 @@ describe("syncSkill — sha256-verified self-install", () => {
     await expect(syncSkill(evil, "engager-batch", root)).rejects.toThrow(/unsafe path/);
   });
 });
+
+describe("wake cadence jitter (v0.5)", () => {
+  it("pushedCadence prefers the stable base over the pre-jittered value", async () => {
+    const { pushedCadence } = await import("./loop.js");
+    expect(pushedCadence({ intervalMinutes: 52, intervalMinutesBase: 60 })).toBe(60);
+    expect(pushedCadence({ intervalMinutes: 52 })).toBe(52); // old server
+    expect(pushedCadence({ intervalMinutes: null, intervalMinutesBase: null })).toBeUndefined();
+    expect(pushedCadence(null)).toBeUndefined();
+    expect(pushedCadence({ intervalMinutes: 0 })).toBeUndefined(); // never adopt 0
+  });
+
+  it("nextWakeDelayMs spans 0.75-1.25x and never dips under a minute", async () => {
+    const { nextWakeDelayMs } = await import("./loop.js");
+    expect(nextWakeDelayMs(60, () => 0)).toBe(45 * 60_000);
+    expect(nextWakeDelayMs(60, () => 1)).toBe(75 * 60_000);
+    expect(nextWakeDelayMs(1, () => 0)).toBe(60_000); // floor
+    for (let i = 0; i < 100; i++) {
+      const v = nextWakeDelayMs(60);
+      expect(v).toBeGreaterThanOrEqual(45 * 60_000);
+      expect(v).toBeLessThanOrEqual(75 * 60_000);
+      expect(Number.isInteger(v)).toBe(true); // heartbeat schema needs ints
+    }
+  });
+
+  it("controlTickDelayMs jitters the 5-min heartbeat to 4-6.5 min", async () => {
+    const { controlTickDelayMs } = await import("./loop.js");
+    expect(controlTickDelayMs(() => 0)).toBe(4 * 60_000);
+    expect(controlTickDelayMs(() => 1)).toBe(6.5 * 60_000);
+  });
+});
