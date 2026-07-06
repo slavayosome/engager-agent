@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import {
+  findUnknownFlag,
   pauseCommand,
   resumeCommand,
   serviceCommand,
@@ -41,7 +42,27 @@ function version(): string {
  *   engager-agent --interval N|Nh  set + persist the wake cadence (minutes, or hours with "h")
  *   engager-agent --service       loop in service mode (used by the launchd plist)
  *   engager-agent --version       print the version and exit
+ *   engager-agent --help          print this usage and exit
  */
+const USAGE = `engager-agent — local autonomous runner for Engager agent-led campaigns
+
+  engager-agent                 first run: setup wizard; then: start the loop
+  engager-agent config          re-run the wizard (rotate key, switch campaign/model)
+  engager-agent register        (re-)register the Engager MCP in Claude Code + Desktop
+  engager-agent status [--json] runner health: state, last cycle, markers, service
+  engager-agent pause [--for 2h]  hold drafting (marker; survives restarts)
+  engager-agent resume          clear pause/halt markers + restart the service
+  engager-agent stop            stop (and disable) the service, or SIGTERM the loop
+  engager-agent start           start the installed service (or fall through to the loop)
+  engager-agent service install|uninstall|status   manage the launchd autostart
+  engager-agent --once          run a single cycle and exit (cron-friendly)
+  engager-agent --once --batch N  override the batch size for that cycle
+  engager-agent --campaign ID   override the configured campaign
+  engager-agent --interval N|Nh  set + persist the wake cadence (minutes, or hours with "h")
+  engager-agent --service       loop in service mode (used by the launchd plist)
+  engager-agent --version       print the version and exit
+  engager-agent --help          print this usage and exit
+`;
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const has = (f: string) => argv.includes(f);
@@ -54,6 +75,18 @@ async function main(): Promise<void> {
   if (has("--version") || has("-v")) {
     process.stdout.write(`${version()}\n`);
     return;
+  }
+
+  // Unknown flags must NEVER fall through to the loop — `engager-agent --help`
+  // silently starting a real (paid) drafting session is how we learned this.
+  if (has("--help") || has("-h") || cmd === "help") {
+    process.stdout.write(USAGE);
+    return;
+  }
+  const unknownFlag = findUnknownFlag(argv);
+  if (unknownFlag) {
+    log(`unknown flag "${unknownFlag}"\n\n${USAGE}`);
+    process.exit(1);
   }
 
   switch (cmd) {
