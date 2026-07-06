@@ -192,3 +192,22 @@ export function serviceCommand(action: string | undefined): void {
       process.exit(1);
   }
 }
+
+const BOOLEAN_FLAGS = new Set(["--version", "-v", "--help", "-h", "--once", "--service", "--json"]);
+const VALUE_FLAGS = new Set(["--batch", "--campaign", "--interval", "--for"]);
+
+/** First dash-prefixed token that isn't a known flag (or a known flag's value).
+ *  Lives here (not cli.ts) so tests can import it — cli.ts runs main() on load. */
+export function findUnknownFlag(argv: string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a?.startsWith("-")) continue;
+    if (BOOLEAN_FLAGS.has(a)) continue;
+    if (VALUE_FLAGS.has(a)) {
+      i++; // skip the flag's value
+      continue;
+    }
+    return a;
+  }
+  return undefined;
+}

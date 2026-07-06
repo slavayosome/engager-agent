@@ -11,6 +11,7 @@ import {
   writeHalt,
   writePause,
 } from "./markers.js";
+import { findUnknownFlag } from "./commands.js";
 import type { CampaignRow, OpsSummary } from "./mcp.js";
 import {
   desktopEntry,
@@ -19,7 +20,7 @@ import {
   planDesktopMerge,
   type DesktopConfig,
 } from "./register.js";
-import { renderPlist } from "./service.js";
+import { renderPlist, stableBrewPath } from "./service.js";
 import { readStatus, writeStatus, type RunnerStatus } from "./status.js";
 
 beforeEach(() => {
@@ -124,6 +125,63 @@ describe("renderPlist", () => {
     });
     expect(plist).toContain("/a&amp;b/node");
     expect(plist).not.toContain("/a&b/node");
+  });
+});
+
+describe("stableBrewPath", () => {
+  // Simulated fs: the opt symlink points at the current keg.
+  const KEG = "/opt/homebrew/Cellar/engager-agent/0.4.0/libexec/lib/node_modules/engager-agent/dist/cli.js";
+  const OPT = "/opt/homebrew/opt/engager-agent/libexec/lib/node_modules/engager-agent/dist/cli.js";
+  const resolveVia = (real: Record<string, string>) => (p: string) => {
+    const r = real[p];
+    if (!r) throw new Error(`ENOENT: ${p}`);
+    return r;
+  };
+
+  it("rewrites versioned keg paths to the stable opt symlink (survives brew upgrade)", () => {
+    const resolve = resolveVia({ [KEG]: KEG, [OPT]: KEG });
+    expect(stableBrewPath(KEG, resolve)).toBe(OPT);
+    expect(
+      stableBrewPath("/opt/homebrew/Cellar/node/26.4.0/bin/node", resolveVia({
+        "/opt/homebrew/Cellar/node/26.4.0/bin/node": "/opt/homebrew/Cellar/node/26.4.0/bin/node",
+        "/opt/homebrew/opt/node/bin/node": "/opt/homebrew/Cellar/node/26.4.0/bin/node",
+      })),
+    ).toBe("/opt/homebrew/opt/node/bin/node");
+  });
+
+  it("keeps the keg path when the opt symlink is missing", () => {
+    const resolve = resolveVia({ [KEG]: KEG });
+    expect(stableBrewPath(KEG, resolve)).toBe(KEG);
+  });
+
+  it("keeps the keg path when opt resolves somewhere else", () => {
+    const resolve = resolveVia({ [KEG]: KEG, [OPT]: "/somewhere/else" });
+    expect(stableBrewPath(KEG, resolve)).toBe(KEG);
+  });
+
+  it("passes non-brew paths through untouched", () => {
+    const boom = () => {
+      throw new Error("must not resolve");
+    };
+    expect(stableBrewPath("/usr/local/bin/node", boom)).toBe("/usr/local/bin/node");
+    expect(stableBrewPath("/Users/x/.npm-global/lib/node_modules/engager-agent/dist/cli.js", boom)).toBe(
+      "/Users/x/.npm-global/lib/node_modules/engager-agent/dist/cli.js",
+    );
+  });
+});
+
+describe("findUnknownFlag", () => {
+  it("lets every documented flag (and value-flag values) through", () => {
+    expect(
+      findUnknownFlag(["--once", "--batch", "2", "--campaign", "23", "--interval", "2h", "--service", "--json"]),
+    ).toBeUndefined();
+    expect(findUnknownFlag(["status", "--json"])).toBeUndefined();
+    expect(findUnknownFlag([])).toBeUndefined();
+  });
+
+  it("catches typos and unknown flags so they can't fall through to a paid session", () => {
+    expect(findUnknownFlag(["--hlep"])).toBe("--hlep");
+    expect(findUnknownFlag(["--once", "--bacth", "2"])).toBe("--bacth");
   });
 });
 

@@ -66,6 +66,28 @@ export function renderPlist(opts: {
 `;
 }
 
+/**
+ * Homebrew keg paths are versioned (…/Cellar/<formula>/<version>/…) and the old
+ * keg is deleted by `brew upgrade` — a plist that points into a keg kills the
+ * running service mid-session and leaves autostart pointing at nothing on the
+ * next upgrade. Rewrite to the stable `opt/<formula>` symlink whenever it
+ * resolves to the same file; non-brew paths pass through untouched.
+ */
+export function stableBrewPath(
+  p: string,
+  resolve: (path: string) => string = realpathSync,
+): string {
+  const m = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/(.+)$/.exec(p);
+  if (!m) return p;
+  const candidate = `${m[1]}/opt/${m[2]}/${m[3]}`;
+  try {
+    if (resolve(candidate) === resolve(p)) return candidate;
+  } catch {
+    /* opt symlink missing or dangling — keep the keg path */
+  }
+  return p;
+}
+
 /** The real cli.js entry — through the npm bin symlink if that's how we ran. */
 export function resolveEntryScript(): string {
   const argv1 = process.argv[1];
@@ -114,8 +136,8 @@ export function installService(): { ok: boolean; note: string } {
   mkdirSync(logDir, { recursive: true });
   mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
   const plist = renderPlist({
-    nodePath: process.execPath,
-    scriptPath: resolveEntryScript(),
+    nodePath: stableBrewPath(process.execPath),
+    scriptPath: stableBrewPath(resolveEntryScript()),
     logPath: join(logDir, "service.log"),
     pathEnv: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
   });
