@@ -30,19 +30,20 @@ export type SessionSummary = {
   reasons?: string[];
 };
 
-/** One wake-window of need: never draft past the cadence-window's posting
- *  headroom (hourly cap × hours until the next wake), never past the server's
- *  recommendation, floor at 0. Hourly cadence = the classic hourly micro-batch. */
+/** FALLBACK sizing for pre-workOrder servers (newer servers author the batch
+ *  size in the heartbeat's workOrder — see loop.ts). One wake-window of need:
+ *  never draft past the cadence-window's posting headroom (hourly cap × hours
+ *  until the next wake), never past the server's recommendation, floor at 0.
+ *  A missing hourlyCommentCap (servers that stopped sending the deprecated
+ *  column) degrades to uncapped — the recommendation alone. */
 export function computeNeed(
   queue: CampaignQueue,
   campaign: CampaignRow,
   intervalMinutes = 60,
 ): number {
   const cadenceHours = Math.max(1, intervalMinutes / 60);
-  const windowCap =
-    campaign.hourlyCommentCap > 0
-      ? Math.ceil(campaign.hourlyCommentCap * cadenceHours)
-      : Infinity;
+  const hourlyCap = campaign.hourlyCommentCap ?? 0;
+  const windowCap = hourlyCap > 0 ? Math.ceil(hourlyCap * cadenceHours) : Infinity;
   return Math.max(0, Math.min(queue.recommendedBatchSize, windowCap));
 }
 
@@ -51,9 +52,13 @@ export function buildPrompt(order: WorkOrder): string {
     order.replyIds.length > 0
       ? `Then draft replies for these pending incoming comments via submit_reply, ids: ${order.replyIds.join(", ")} (sensitivityHold anything hostile/press/legal/profane).`
       : "There are no pending incoming comments — do not look for reply work.";
+  const batch =
+    order.batchSize > 0
+      ? `Work order: campaign ${order.campaignId}, batch size ${order.batchSize}. Draft for this campaign only, at most ${order.batchSize} comments.`
+      : `Work order: campaign ${order.campaignId}, batch size 0. Do NOT draft any new comments this session — reply work only.`;
   return [
     `Run ONE autonomous Engager micro-batch using the engager-batch skill in AUTONOMOUS MODE (follow its references/autonomous.md decision table exactly — no user is present, never ask a question).`,
-    `Work order: campaign ${order.campaignId}, batch size ${order.batchSize}. Draft for this campaign only, at most ${order.batchSize} comments.`,
+    batch,
     replies,
     `Finish by printing the autonomous-mode JSON summary as the LAST line of your output.`,
   ].join("\n");

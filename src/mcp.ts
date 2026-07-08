@@ -16,7 +16,10 @@ export type CampaignRow = {
   name: string;
   status: string;
   draftingMode: "agent" | "server";
-  hourlyCommentCap: number;
+  /** DEPRECATED server column, only used by the local FALLBACK sizing
+   *  (computeNeed) against pre-workOrder servers; newer servers may stop
+   *  sending it — absent degrades to uncapped fallback. */
+  hourlyCommentCap?: number;
   autoReply?: { enabled?: boolean } | null;
 };
 
@@ -46,6 +49,17 @@ export type IncomingComment = {
   status: string;
 };
 
+/** Per-wake drafting quota authored by the server from its day plan: unfilled
+ *  send slots in the upcoming wake window. commentsToDraft is the batch size
+ *  for the NEXT session; pendingReplies is informational (the runner still
+ *  replies to everything pending). */
+export type ServerWorkOrder = {
+  commentsToDraft: number;
+  pendingReplies: number;
+  /** Epoch ms end of the window this order covers. */
+  windowEndsAt: number;
+};
+
 export type RunnerDirective = {
   directive: "run" | "idle" | "stop";
   reason: string;
@@ -57,6 +71,9 @@ export type RunnerDirective = {
   /** The STABLE configured cadence from newer servers. Persist THIS and jitter
    *  locally, so config doesn't churn as the server's per-window jitter moves. */
   intervalMinutesBase?: number | null;
+  /** Per-wake batch sizing from newer servers. undefined = old server (size
+   *  locally via computeNeed); null = directive isn't run / nothing to size. */
+  workOrder?: ServerWorkOrder | null;
 };
 
 /** Heartbeat payload for report_runner_status (mirrors ~/.engager/status.json). */
@@ -155,6 +172,7 @@ export class EngagerMcp {
       reason: string;
       intervalMinutes?: number | null;
       intervalMinutesBase?: number | null;
+      workOrder?: ServerWorkOrder | null;
     }>("report_runner_status", hb);
     return {
       directive: res.directive,
@@ -164,6 +182,7 @@ export class EngagerMcp {
       ...(res.intervalMinutesBase !== undefined
         ? { intervalMinutesBase: res.intervalMinutesBase }
         : {}),
+      ...(res.workOrder !== undefined ? { workOrder: res.workOrder } : {}),
     };
   }
 

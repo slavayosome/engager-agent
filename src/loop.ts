@@ -12,7 +12,7 @@ import {
   type WorkOrder,
 } from "./session.js";
 import { skillsRoot, syncSkill } from "./skills.js";
-import { writeStatus, type CycleInfo, type RunnerState } from "./status.js";
+import { readStatus, writeStatus, type CycleInfo, type RunnerState } from "./status.js";
 import { snapshot, verifySession, type Verdict } from "./verify.js";
 
 /**
@@ -92,7 +92,13 @@ const REAL_DEPS: CycleDeps = {
 
 export async function runCycle(
   cfg: AgentConfig,
-  opts: { batchOverride?: number } = {},
+  opts: {
+    batchOverride?: number;
+    /** Batch size from the server's heartbeat workOrder (commentsToDraft).
+     *  Present (including 0) = the server sized this wake; absent = old
+     *  server → fall back to local computeNeed. */
+    serverBatch?: number;
+  } = {},
   deps: CycleDeps = REAL_DEPS,
 ): Promise<CycleOutcome> {
   const mcp = await deps.connect(cfg);
@@ -124,13 +130,21 @@ export async function runCycle(
 
     const pre = await mcp.campaignQueue(cfg.campaignId);
     const replies = await mcp.listIncoming(cfg.campaignId);
-    const need = opts.batchOverride ?? computeNeed(pre, campaign, cfg.intervalMinutes);
+    const need =
+      opts.batchOverride ?? opts.serverBatch ?? computeNeed(pre, campaign, cfg.intervalMinutes);
+    const sizedBy =
+      opts.batchOverride != null
+        ? "override"
+        : opts.serverBatch != null
+          ? "server work order"
+          : "local fallback";
+    log(`batch ${need} (${sizedBy}), replies ${replies.length}`);
 
     if (need === 0 && replies.length === 0) {
       return {
         ran: false,
         ok: true,
-        note: `nothing to do — runway ${pre.runwayDays}d, pool ${pre.candidatePool.size}/${pre.candidatePool.target}`,
+        note: `nothing to do — batch 0 (${sizedBy}), runway ${pre.runwayDays}d, pool ${pre.candidatePool.size}/${pre.candidatePool.target}`,
       };
     }
 
@@ -288,6 +302,15 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
       `control poll every ${Math.round(CONTROL_POLL_MS / 60_000)}min, ` +
       `daily session cap ${cfg.dailySessionCap}, model ${cfg.model}${service ? ", service mode" : ""}`,
   );
+  // Visibility only: recovery needs no special handling — the first cycle runs
+  // immediately, and the server's work order sizes it from what's left of the
+  // window (missed slots are gone by design, never backfilled).
+  const prior = readStatus();
+  if (prior?.nextWakeAt != null && Date.now() - prior.nextWakeAt > 15 * 60_000) {
+    log(
+      `restarted after oversleeping a wake (planned ${new Date(prior.nextWakeAt).toISOString()}) — first cycle runs now`,
+    );
+  }
   put("starting");
 
   for (;;) {
@@ -343,7 +366,11 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
     if (!idleReason && Date.now() >= nextCycleAt) {
       put("session");
       try {
-        const outcome = await runCycle(cfg);
+        // Server-sized batch when the heartbeat carried a work order (including
+        // an explicit 0 = window already filled); absent = old server → the
+        // cycle falls back to local computeNeed sizing.
+        const serverBatch = directive?.workOrder?.commentsToDraft;
+        const outcome = await runCycle(cfg, serverBatch != null ? { serverBatch } : {});
         lastCycle = { at: Date.now(), ran: outcome.ran, ok: outcome.ok, note: outcome.note };
         if (outcome.costUsd != null) lastCostUsd = outcome.costUsd;
         if (outcome.tokens) lastTokens = outcome.tokens;

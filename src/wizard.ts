@@ -313,7 +313,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
     }
     p.note(
       [
-        `Campaign:  ${picked?.name ?? `#${campaignId}`}${picked?.hourlyCommentCap ? ` (≤${picked.hourlyCommentCap} comments/hour)` : ""}`,
+        `Campaign:  ${picked?.name ?? `#${campaignId}`} (batch size set by the server each wake)`,
         ...(modeLine ? [modeLine] : []),
         ...(queueLine ? [queueLine] : []),
         `Drafting:  every ~${cfg.intervalMinutes} min when there's headroom, ≤${cfg.dailySessionCap} sessions/day, model ${cfg.model}`,

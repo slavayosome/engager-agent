@@ -46,6 +46,10 @@ describe("computeNeed — one wake-window of sizing", () => {
   it("hourlyCommentCap 0 = uncapped → the recommendation as-is", () => {
     expect(computeNeed(QUEUE, { ...CAMPAIGN, hourlyCommentCap: 0 })).toBe(42);
   });
+  it("a server that stopped sending the deprecated cap → uncapped fallback", () => {
+    const { hourlyCommentCap: _omit, ...bare } = CAMPAIGN;
+    expect(computeNeed(QUEUE, bare)).toBe(42);
+  });
   it("a longer cadence widens the window: 3h × cap 3 = 9", () => {
     expect(computeNeed(QUEUE, CAMPAIGN, 180)).toBe(9);
   });
@@ -106,6 +110,12 @@ describe("buildCliArgs — claude adapter", () => {
     expect(prompt).toContain("AUTONOMOUS MODE");
     const noReplies = buildPrompt({ campaignId: 7, batchSize: 3, replyIds: [] });
     expect(noReplies).toContain("do not look for reply work");
+  });
+  it("batch size 0 = reply-only session, never 'at most 0 comments'", () => {
+    const prompt = buildPrompt({ campaignId: 7, batchSize: 0, replyIds: [11] });
+    expect(prompt).toContain("Do NOT draft any new comments");
+    expect(prompt).not.toContain("at most 0");
+    expect(prompt).toContain("ids: 11");
   });
 });
 
