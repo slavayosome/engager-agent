@@ -170,8 +170,24 @@ async function main(): Promise<void> {
 
   if (has("--once")) {
     const batch = val("--batch");
+    // One preflight heartbeat so the server can size this wake (workOrder);
+    // a failed poll degrades to local fallback sizing, never blocks the run.
+    let serverBatch: number | undefined;
+    if (batch == null) {
+      try {
+        const directive = await controlPoll(cfg, version(), {
+          state: "preflight",
+          consecutiveFailures: 0,
+          sessionsToday: 0,
+        });
+        serverBatch = directive?.workOrder?.commentsToDraft;
+      } catch {
+        /* old server or offline — fall back to computeNeed */
+      }
+    }
     const outcome = await runCycle(cfg, {
       batchOverride: batch != null ? Number(batch) : undefined,
+      ...(serverBatch != null ? { serverBatch } : {}),
     });
     log(`${outcome.ok ? "OK" : "FAILED"} — ${outcome.note}`);
     if (outcome.fatal) writeHalt(outcome.note); // cron wrappers see the marker too

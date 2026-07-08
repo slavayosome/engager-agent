@@ -268,6 +268,71 @@ describe("agent-runner eval — the autonomous cycle contract", () => {
     expect(out.note).toContain("grew by 0");
   });
 
+  it("server work order overrides the local hourly-clamp sizing", async () => {
+    const state: FakeState = {
+      campaign: { hourlyCommentCap: 3 }, // local fallback would say 3
+      queued: [10, 15],
+      recommended: 42,
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", submitted: 5, reasons: [] } })],
+    };
+    const out = await runCycle(CFG, { serverBatch: 5 }, fakeDeps(state));
+    expect(out.ok).toBe(true);
+    expect(state.orders).toEqual([{ campaignId: 7, batchSize: 5, replyIds: [] }]);
+  });
+
+  it("server work order 0 + no replies → clean skip, ZERO sessions", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10],
+      recommended: 42, // local sizing would have drafted — the server's 0 wins
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [],
+    };
+    const out = await runCycle(CFG, { serverBatch: 0 }, fakeDeps(state));
+    expect(out).toMatchObject({ ran: false, ok: true });
+    expect(out.note).toContain("server work order");
+    expect(state.orders).toHaveLength(0);
+    expect(state.discoverCalls).toBe(0); // no top-up for a filled window
+  });
+
+  it("server work order 0 + pending replies → reply-only session (batch 0)", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 10],
+      recommended: 42,
+      poolSufficient: true,
+      replies: [21, 22],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", submitted: 0, replies: 2, reasons: [] } })],
+    };
+    const out = await runCycle(CFG, { serverBatch: 0 }, fakeDeps(state));
+    expect(out.ok).toBe(true);
+    expect(state.orders).toEqual([{ campaignId: 7, batchSize: 0, replyIds: [21, 22] }]);
+  });
+
+  it("batchOverride (--batch) beats the server work order", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 12],
+      recommended: 42,
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", submitted: 2, reasons: [] } })],
+    };
+    await runCycle(CFG, { batchOverride: 2, serverBatch: 9 }, fakeDeps(state));
+    expect(state.orders.map((o) => o.batchSize)).toEqual([2]);
+  });
+
   it("campaign not found → FATAL (deleted campaigns halt the loop, not the failure budget)", async () => {
     const state: FakeState = {
       campaign: { id: 999 }, // listCampaigns returns a different id than CFG.campaignId
