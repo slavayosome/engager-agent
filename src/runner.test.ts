@@ -127,7 +127,8 @@ describe("buildCliArgs — claude adapter", () => {
       requestedDrafts: 2,
     });
     expect(prompt).toContain("mode RANK");
-    expect(prompt).toContain("Score up to 30 unranked candidate");
+    expect(prompt).toContain("get_refresh_batch");
+    expect(prompt).toContain("up to 30 candidate post");
     expect(prompt).toContain("submit_candidate_ranking");
     expect(prompt).toContain("draft the 2 post");
     expect(prompt).toContain("submit_batch");
@@ -143,7 +144,7 @@ describe("buildCliArgs — claude adapter", () => {
       requestedDrafts: 0,
     });
     expect(prompt).toContain("do NOT draft window-fill comments");
-    expect(prompt).toContain("Score up to 12");
+    expect(prompt).toContain("up to 12 candidate post");
   });
 });
 

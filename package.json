@@ -1,6 +1,6 @@
 {
   "name": "engager-agent",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Local autonomous runner for Engager agent-led campaigns: hourly no-LLM preflight over the hosted MCP, headless claude -p micro-batches when there's headroom, server-verified results.",
   "license": "MIT",
   "author": "Slava Nikitin <nikswpe@gmail.com>",

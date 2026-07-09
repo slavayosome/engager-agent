@@ -23,6 +23,10 @@ export type WorkOrder = {
   mode?: "draft" | "rank";
   candidatesToRank?: number;
   requestedDrafts?: number;
+  /** Curated-pool refresh (both modes): raw candidates to relevance-triage this
+   *  wake (get_refresh_batch → match/reject verdicts) before drafting. 0/absent
+   *  = pool full, skip. */
+  triageToRefresh?: number;
 };
 
 export type SessionSummary = {
@@ -55,19 +59,32 @@ export function computeNeed(
   return Math.max(0, Math.min(queue.recommendedBatchSize, windowCap));
 }
 
+/** Curated-pool refresh instruction — present on any wake (draft or rank) when
+ *  the server asks to triage. Drives get_refresh_batch → match/reject verdicts
+ *  BEFORE drafting, so a full-draft-window wake still keeps the pool curated. */
+function triageClause(toRefresh?: number): string {
+  const n = toRefresh ?? 0;
+  if (n <= 0) return "";
+  return `FIRST, refresh the curated pool: call get_refresh_batch and judge up to ${n} candidate post${n === 1 ? "" : "s"} against the campaign filter, submitting a match or reject verdict for each via submit_candidate_ranking (engager-batch skill §2b) — do this before any drafting.`;
+}
+
 export function buildPrompt(order: WorkOrder): string {
   if (order.mode === "rank") return buildRankPrompt(order);
   const replies = replyClause(order.replyIds);
+  const triage = triageClause(order.triageToRefresh);
   const batch =
     order.batchSize > 0
       ? `Work order: campaign ${order.campaignId}, batch size ${order.batchSize}. Draft for this campaign only, at most ${order.batchSize} comments.`
-      : `Work order: campaign ${order.campaignId}, batch size 0. Do NOT draft any new comments this session — reply work only.`;
+      : `Work order: campaign ${order.campaignId}, batch size 0. Do NOT draft any new comments this session.`;
   return [
     `Run ONE autonomous Engager micro-batch using the engager-batch skill in AUTONOMOUS MODE (follow its references/autonomous.md decision table exactly — no user is present, never ask a question).`,
+    triage,
     batch,
     replies,
     `Finish by printing the autonomous-mode JSON summary as the LAST line of your output.`,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -77,12 +94,14 @@ export function buildPrompt(order: WorkOrder): string {
  * The candidate pool is the product; the runner scores it, the user picks.
  */
 function buildRankPrompt(order: WorkOrder): string {
-  const toRank = order.candidatesToRank ?? 0;
+  // Prefer the curated-refresh count; fall back to candidatesToRank for older
+  // servers that send a rank order without the triage block.
+  const toRank = order.triageToRefresh ?? order.candidatesToRank ?? 0;
   const toDraft = order.requestedDrafts ?? 0;
   const rank =
     toRank > 0
-      ? `Score up to ${toRank} unranked candidate post${toRank === 1 ? "" : "s"} for this campaign and submit the scores via submit_candidate_ranking.`
-      : `There are no unranked candidates to score this wake.`;
+      ? `Refresh the curated pool: call get_refresh_batch and judge up to ${toRank} candidate post${toRank === 1 ? "" : "s"} against the campaign filter, submitting a match or reject verdict for each via submit_candidate_ranking.`
+      : `There are no untriaged candidates to judge this wake.`;
   const drafts =
     toDraft > 0
       ? `Then draft the ${toDraft} post${toDraft === 1 ? "" : "s"} the user explicitly requested (status 'draft_requested') and submit via submit_batch.`
