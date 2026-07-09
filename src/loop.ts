@@ -142,6 +142,10 @@ export async function runCycle(
     const rank = opts.serverOrder?.mode === "rank";
     const candidatesToRank = rank ? (opts.serverOrder?.candidatesToRank ?? 0) : 0;
     const requestedDrafts = rank ? (opts.serverOrder?.requestedDrafts ?? 0) : 0;
+    // Curated-pool triage this wake — BOTH modes. This is a first-class reason to
+    // WAKE: a manual/draft campaign whose draft window is full (commentsToDraft 0)
+    // must still refresh its curated pool. Absent on pre-curation servers → 0.
+    const triageToRefresh = opts.serverOrder?.triage?.toTriage ?? 0;
 
     const need =
       opts.batchOverride ??
@@ -156,21 +160,21 @@ export async function runCycle(
           : "local fallback";
 
     if (rank) {
-      log(`rank wake: ${candidatesToRank} to score, ${requestedDrafts} requested, replies ${replies.length}`);
-      if (candidatesToRank === 0 && requestedDrafts === 0 && replies.length === 0) {
+      log(`rank wake: ${candidatesToRank} to score, ${triageToRefresh} to triage, ${requestedDrafts} requested, replies ${replies.length}`);
+      if (candidatesToRank === 0 && triageToRefresh === 0 && requestedDrafts === 0 && replies.length === 0) {
         return {
           ran: false,
           ok: true,
-          note: `nothing to do — rank wake, pool fully ranked (${pre.candidatePool.size}/${pre.candidatePool.target})`,
+          note: `nothing to do — rank wake, pool fully triaged (${pre.candidatePool.size}/${pre.candidatePool.target})`,
         };
       }
     } else {
-      log(`batch ${need} (${sizedBy}), replies ${replies.length}`);
-      if (need === 0 && replies.length === 0) {
+      log(`batch ${need} (${sizedBy}), ${triageToRefresh} to triage, replies ${replies.length}`);
+      if (need === 0 && triageToRefresh === 0 && replies.length === 0) {
         return {
           ran: false,
           ok: true,
-          note: `nothing to do — batch 0 (${sizedBy}), runway ${pre.runwayDays}d, pool ${pre.candidatePool.size}/${pre.candidatePool.target}`,
+          note: `nothing to do — batch 0 (${sizedBy}), triage 0, runway ${pre.runwayDays}d, pool ${pre.candidatePool.size}/${pre.candidatePool.target}`,
         };
       }
     }
@@ -189,6 +193,9 @@ export async function runCycle(
     }
 
     // 3. The agent session, with a fully-resolved work order.
+    // Only carry triageToRefresh when there's triage to do (keeps the order clean
+    // and pre-curation-identical when the pool is full / server sends no triage).
+    const triagePart = triageToRefresh > 0 ? { triageToRefresh } : {};
     const order: WorkOrder = rank
       ? {
           campaignId: cfg.campaignId,
@@ -197,16 +204,18 @@ export async function runCycle(
           mode: "rank",
           candidatesToRank,
           requestedDrafts,
+          ...triagePart,
         }
       : {
           campaignId: cfg.campaignId,
           batchSize: need,
           replyIds: replies.map((r) => r.id),
+          ...triagePart,
         };
     log(
       rank
-        ? `session start: RANK ${candidatesToRank} to score, ${requestedDrafts} requested, replies ${order.replyIds.length}, model ${cfg.model}`
-        : `session start: batch ${order.batchSize}, replies ${order.replyIds.length}, model ${cfg.model}`,
+        ? `session start: RANK ${candidatesToRank} to score, ${triageToRefresh} to triage, ${requestedDrafts} requested, replies ${order.replyIds.length}, model ${cfg.model}`
+        : `session start: batch ${order.batchSize}, ${triageToRefresh} to triage, replies ${order.replyIds.length}, model ${cfg.model}`,
     );
     const result = await deps.session(cfg, order);
 
@@ -223,10 +232,11 @@ export async function runCycle(
       // Rank wakes: the retry is a single requested draft — the ranking already
       // landed (it doesn't grow the queue, so it never triggers retryNarrowed),
       // so don't re-score the whole pool on the retry.
+      // Triage already landed on the first attempt — never re-triage on the retry.
       const narrowed: WorkOrder =
         order.mode === "rank"
-          ? { ...order, batchSize: 1, requestedDrafts: 1, candidatesToRank: 0, replyIds: [] }
-          : { ...order, batchSize: 1, replyIds: [] };
+          ? { ...order, batchSize: 1, requestedDrafts: 1, candidatesToRank: 0, triageToRefresh: 0, replyIds: [] }
+          : { ...order, batchSize: 1, triageToRefresh: 0, replyIds: [] };
       const retry = await deps.session(cfg, narrowed);
       const post2 = await mcp.campaignQueue(cfg.campaignId);
       verdict = verifySession(snapshot(post), snapshot(post2), retry.summary, retry.exitCode);

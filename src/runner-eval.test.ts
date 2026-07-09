@@ -313,6 +313,32 @@ describe("agent-runner eval — the autonomous cycle contract", () => {
     expect(state.discoverCalls).toBe(0); // no top-up for a filled window
   });
 
+  it("draft wake with batch 0 but a triage deficit → RUNS to refresh the pool (not a skip)", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 10], // triage writes verdicts on the pool — it never grows the queue
+      recommended: 0,
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", submitted: 0, reasons: [] } })],
+    };
+    const serverOrder: ServerWorkOrder = {
+      mode: "draft",
+      commentsToDraft: 0, // draft window full — pre-curation runners would SKIP here
+      pendingReplies: 0,
+      windowEndsAt: 0,
+      triage: { toTriage: 50, topByReach: 35, random: 15 },
+    };
+    const out = await runCycle(CFG, { serverOrder }, fakeDeps(state));
+    expect(out.ran).toBe(true); // NOT nothing_to_do — the triage deficit is a wake reason
+    expect(state.orders).toEqual([
+      { campaignId: 7, batchSize: 0, replyIds: [], triageToRefresh: 50 },
+    ]);
+    expect(state.discoverCalls).toBe(0); // triage-only wake needs no raw-pool top-up
+  });
+
   it("server work order 0 + pending replies → reply-only session (batch 0)", async () => {
     const state: FakeState = {
       campaign: {},

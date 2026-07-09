@@ -64,6 +64,10 @@ export type ServerWorkOrder = {
   candidatesToRank?: number;
   /** Discover only: posts the user explicitly asked to draft. */
   requestedDrafts?: number;
+  /** Curated-pool refresh (BOTH modes): raw candidates to relevance-triage this
+   *  wake so the matched pool stays topped up. `toTriage` 0 = pool full. Absent
+   *  on pre-curation servers → the runner triages nothing extra. */
+  triage?: { toTriage: number; topByReach: number; random: number };
   pendingReplies: number;
   /** Epoch ms end of the window this order covers. */
   windowEndsAt: number;
