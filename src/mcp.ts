@@ -54,7 +54,16 @@ export type IncomingComment = {
  *  for the NEXT session; pendingReplies is informational (the runner still
  *  replies to everything pending). */
 export type ServerWorkOrder = {
+  /** "draft" = the classic fill-the-window order (commentsToDraft). "rank" = a
+   *  DISCOVER campaign's scout wake: score unranked candidates + draft ONLY the
+   *  user's explicit requests (commentsToDraft is always 0 there). Absent on
+   *  pre-discover servers → treated as "draft". */
+  mode?: "draft" | "rank";
   commentsToDraft: number;
+  /** Discover only: unranked pool candidates to score this wake. */
+  candidatesToRank?: number;
+  /** Discover only: posts the user explicitly asked to draft. */
+  requestedDrafts?: number;
   pendingReplies: number;
   /** Epoch ms end of the window this order covers. */
   windowEndsAt: number;

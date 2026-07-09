@@ -170,9 +170,10 @@ async function main(): Promise<void> {
 
   if (has("--once")) {
     const batch = val("--batch");
-    // One preflight heartbeat so the server can size this wake (workOrder);
-    // a failed poll degrades to local fallback sizing, never blocks the run.
-    let serverBatch: number | undefined;
+    // One preflight heartbeat so the server can size this wake (workOrder — the
+    // full order carries rank mode for discover campaigns); a failed poll
+    // degrades to local fallback sizing, never blocks the run.
+    let serverOrder: import("./mcp.js").ServerWorkOrder | undefined;
     if (batch == null) {
       try {
         const directive = await controlPoll(cfg, version(), {
@@ -180,14 +181,14 @@ async function main(): Promise<void> {
           consecutiveFailures: 0,
           sessionsToday: 0,
         });
-        serverBatch = directive?.workOrder?.commentsToDraft;
+        serverOrder = directive?.workOrder ?? undefined;
       } catch {
         /* old server or offline — fall back to computeNeed */
       }
     }
     const outcome = await runCycle(cfg, {
       batchOverride: batch != null ? Number(batch) : undefined,
-      ...(serverBatch != null ? { serverBatch } : {}),
+      ...(serverOrder != null ? { serverOrder } : {}),
     });
     log(`${outcome.ok ? "OK" : "FAILED"} — ${outcome.note}`);
     if (outcome.fatal) writeHalt(outcome.note); // cron wrappers see the marker too

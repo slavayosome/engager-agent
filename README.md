@@ -9,6 +9,10 @@ comment queue stocked without a human in the loop, on your own Claude plan:
 - When there's real headroom, it spawns **headless Claude Code** (`claude -p`)
   with the sha256-verified `engager-batch` skill in autonomous mode and a
   fully-resolved work order ("campaign 7, batch size 3, reply to ids 11, 12").
+- On **discover** campaigns it runs as a **scout**: the server's work order asks
+  it to score unranked candidates (`submit_candidate_ranking`) and draft only the
+  posts you explicitly requested — never window-fill. The ranked pool is the
+  product; you pick what to engage.
 - Every session is **verified against server state** — a session that claims
   success while the queue didn't grow is failed and retried once, narrowed to
   batch size 1. Three consecutive failed cycles halt the loop loudly.

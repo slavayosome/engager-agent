@@ -117,6 +117,34 @@ describe("buildCliArgs — claude adapter", () => {
     expect(prompt).not.toContain("at most 0");
     expect(prompt).toContain("ids: 11");
   });
+  it("rank mode → a SCOUT prompt: score candidates + draft only explicit requests", () => {
+    const prompt = buildPrompt({
+      campaignId: 9,
+      batchSize: 2,
+      replyIds: [],
+      mode: "rank",
+      candidatesToRank: 30,
+      requestedDrafts: 2,
+    });
+    expect(prompt).toContain("mode RANK");
+    expect(prompt).toContain("Score up to 30 unranked candidate");
+    expect(prompt).toContain("submit_candidate_ranking");
+    expect(prompt).toContain("draft the 2 post");
+    expect(prompt).toContain("submit_batch");
+    expect(prompt).not.toContain("window-fill comment"); // requests present → no discouragement clause
+  });
+  it("rank mode with no requests → explicitly forbids window-fill drafting", () => {
+    const prompt = buildPrompt({
+      campaignId: 9,
+      batchSize: 0,
+      replyIds: [],
+      mode: "rank",
+      candidatesToRank: 12,
+      requestedDrafts: 0,
+    });
+    expect(prompt).toContain("do NOT draft window-fill comments");
+    expect(prompt).toContain("Score up to 12");
+  });
 });
 
 describe("parseSummary — the mandatory last-line JSON contract", () => {

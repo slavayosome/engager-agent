@@ -64,6 +64,7 @@ export function verifySession(
   }
 
   const claimed = summary.submitted ?? 0;
+  const ranked = summary.ranked ?? 0;
   if (claimed > 0 && delta <= 0) {
     // alreadyExisted resubmits can legitimately produce a 0 delta, but in an
     // hourly loop a whole batch of them means the session drafted nothing new
@@ -75,6 +76,14 @@ export function verifySession(
     };
   }
   if (claimed === 0 && (summary.replies ?? 0) === 0) {
+    // A discover SCOUT wake: ranking writes scores onto the candidate pool, it
+    // never grows the message queue — so queue delta can't verify it. There is
+    // nothing to draft, so this is legitimate work, not a silent no-op. (The
+    // server rejects malformed rankings at intake, so the claimed count is
+    // trustworthy enough; queue-growth verification only applies to drafts.)
+    if (ranked > 0) {
+      return { ok: true, note: `verified: ranked ${ranked} candidate${ranked === 1 ? "" : "s"}` };
+    }
     return {
       ok: summary.outcome === "partial" || summary.outcome === "ok",
       note: `no work landed (${summary.outcome}): ${reasons(summary)}`,
@@ -84,8 +93,8 @@ export function verifySession(
   return {
     ok: true,
     note: `verified: queue +${delta}, submitted ${claimed}, replies ${summary.replies ?? 0}${
-      summary.outcome === "partial" ? ` (partial: ${reasons(summary)})` : ""
-    }`,
+      ranked > 0 ? `, ranked ${ranked}` : ""
+    }${summary.outcome === "partial" ? ` (partial: ${reasons(summary)})` : ""}`,
   };
 }
 

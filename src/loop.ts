@@ -2,7 +2,7 @@ import { saveConfig, type AgentConfig } from "./config.js";
 import { controlPoll, type HeartbeatState } from "./heartbeat.js";
 import { log } from "./log.js";
 import { clearHalt, readHalt, readPause, writeHalt } from "./markers.js";
-import { EngagerMcp, type RunnerDirective } from "./mcp.js";
+import { EngagerMcp, type RunnerDirective, type ServerWorkOrder } from "./mcp.js";
 import {
   computeNeed,
   fmtTokens,
@@ -96,8 +96,12 @@ export async function runCycle(
     batchOverride?: number;
     /** Batch size from the server's heartbeat workOrder (commentsToDraft).
      *  Present (including 0) = the server sized this wake; absent = old
-     *  server → fall back to local computeNeed. */
+     *  server → fall back to local computeNeed. Superseded by serverOrder. */
     serverBatch?: number;
+    /** The full server work order from the heartbeat — carries the rank mode +
+     *  candidate/request counts for DISCOVER campaigns. Preferred over
+     *  serverBatch; absent = old server → local computeNeed sizing. */
+    serverOrder?: ServerWorkOrder;
   } = {},
   deps: CycleDeps = REAL_DEPS,
 ): Promise<CycleOutcome> {
@@ -130,26 +134,51 @@ export async function runCycle(
 
     const pre = await mcp.campaignQueue(cfg.campaignId);
     const replies = await mcp.listIncoming(cfg.campaignId);
+
+    // DISCOVER campaigns send a "rank" work order: the runner is a SCOUT, not a
+    // writer — it scores unranked candidates and drafts ONLY explicit requests,
+    // and commentsToDraft is always 0. Old CLIs saw only commentsToDraft, so a
+    // rank wake looked like "nothing to do" and never ran — this is the fix.
+    const rank = opts.serverOrder?.mode === "rank";
+    const candidatesToRank = rank ? (opts.serverOrder?.candidatesToRank ?? 0) : 0;
+    const requestedDrafts = rank ? (opts.serverOrder?.requestedDrafts ?? 0) : 0;
+
     const need =
-      opts.batchOverride ?? opts.serverBatch ?? computeNeed(pre, campaign, cfg.intervalMinutes);
+      opts.batchOverride ??
+      opts.serverOrder?.commentsToDraft ??
+      opts.serverBatch ??
+      computeNeed(pre, campaign, cfg.intervalMinutes);
     const sizedBy =
       opts.batchOverride != null
         ? "override"
-        : opts.serverBatch != null
+        : opts.serverOrder != null || opts.serverBatch != null
           ? "server work order"
           : "local fallback";
-    log(`batch ${need} (${sizedBy}), replies ${replies.length}`);
 
-    if (need === 0 && replies.length === 0) {
-      return {
-        ran: false,
-        ok: true,
-        note: `nothing to do — batch 0 (${sizedBy}), runway ${pre.runwayDays}d, pool ${pre.candidatePool.size}/${pre.candidatePool.target}`,
-      };
+    if (rank) {
+      log(`rank wake: ${candidatesToRank} to score, ${requestedDrafts} requested, replies ${replies.length}`);
+      if (candidatesToRank === 0 && requestedDrafts === 0 && replies.length === 0) {
+        return {
+          ran: false,
+          ok: true,
+          note: `nothing to do — rank wake, pool fully ranked (${pre.candidatePool.size}/${pre.candidatePool.target})`,
+        };
+      }
+    } else {
+      log(`batch ${need} (${sizedBy}), replies ${replies.length}`);
+      if (need === 0 && replies.length === 0) {
+        return {
+          ran: false,
+          ok: true,
+          note: `nothing to do — batch 0 (${sizedBy}), runway ${pre.runwayDays}d, pool ${pre.candidatePool.size}/${pre.candidatePool.target}`,
+        };
+      }
     }
 
     // 2. Pool top-up (still no LLM) — the scheduled server sweeps are demand-
-    // aware, but a same-hour top-up shortens a thin-pool session's discovery work.
+    // aware, but a same-hour top-up shortens a thin-pool session's discovery
+    // work. Draft wakes only: a rank wake scores the pool as it stands (its
+    // commentsToDraft is 0, so this never fires for it).
     if (need > 0 && !pre.candidatePool.sufficient) {
       try {
         await mcp.discover(cfg.campaignId);
@@ -160,12 +189,25 @@ export async function runCycle(
     }
 
     // 3. The agent session, with a fully-resolved work order.
-    const order: WorkOrder = {
-      campaignId: cfg.campaignId,
-      batchSize: need,
-      replyIds: replies.map((r) => r.id),
-    };
-    log(`session start: batch ${order.batchSize}, replies ${order.replyIds.length}, model ${cfg.model}`);
+    const order: WorkOrder = rank
+      ? {
+          campaignId: cfg.campaignId,
+          batchSize: requestedDrafts,
+          replyIds: replies.map((r) => r.id),
+          mode: "rank",
+          candidatesToRank,
+          requestedDrafts,
+        }
+      : {
+          campaignId: cfg.campaignId,
+          batchSize: need,
+          replyIds: replies.map((r) => r.id),
+        };
+    log(
+      rank
+        ? `session start: RANK ${candidatesToRank} to score, ${requestedDrafts} requested, replies ${order.replyIds.length}, model ${cfg.model}`
+        : `session start: batch ${order.batchSize}, replies ${order.replyIds.length}, model ${cfg.model}`,
+    );
     const result = await deps.session(cfg, order);
 
     // 4. Verify against server state; a claimed-but-unlanded success FAILS.
@@ -178,7 +220,14 @@ export async function runCycle(
     // 5. One narrowed retry (batch size 1) when the failure mode warrants it.
     if (!verdict.ok && verdict.retryNarrowed && order.batchSize > 1) {
       log("retrying once, narrowed to batch size 1");
-      const retry = await deps.session(cfg, { ...order, batchSize: 1, replyIds: [] });
+      // Rank wakes: the retry is a single requested draft — the ranking already
+      // landed (it doesn't grow the queue, so it never triggers retryNarrowed),
+      // so don't re-score the whole pool on the retry.
+      const narrowed: WorkOrder =
+        order.mode === "rank"
+          ? { ...order, batchSize: 1, requestedDrafts: 1, candidatesToRank: 0, replyIds: [] }
+          : { ...order, batchSize: 1, replyIds: [] };
+      const retry = await deps.session(cfg, narrowed);
       const post2 = await mcp.campaignQueue(cfg.campaignId);
       verdict = verifySession(snapshot(post), snapshot(post2), retry.summary, retry.exitCode);
       logSession(retry, verdict);
@@ -366,11 +415,11 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
     if (!idleReason && Date.now() >= nextCycleAt) {
       put("session");
       try {
-        // Server-sized batch when the heartbeat carried a work order (including
-        // an explicit 0 = window already filled); absent = old server → the
-        // cycle falls back to local computeNeed sizing.
-        const serverBatch = directive?.workOrder?.commentsToDraft;
-        const outcome = await runCycle(cfg, serverBatch != null ? { serverBatch } : {});
+        // The full server work order when the heartbeat carried one (draft or
+        // rank; an explicit commentsToDraft 0 = window already filled); absent =
+        // old server → the cycle falls back to local computeNeed sizing.
+        const serverOrder = directive?.workOrder ?? undefined;
+        const outcome = await runCycle(cfg, serverOrder ? { serverOrder } : {});
         lastCycle = { at: Date.now(), ran: outcome.ran, ok: outcome.ok, note: outcome.note };
         if (outcome.costUsd != null) lastCostUsd = outcome.costUsd;
         if (outcome.tokens) lastTokens = outcome.tokens;
