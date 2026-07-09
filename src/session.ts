@@ -17,6 +17,12 @@ export type WorkOrder = {
   campaignId: number;
   batchSize: number;
   replyIds: number[];
+  /** Discover campaigns only: a SCOUT wake — rank unranked candidates and draft
+   *  ONLY the user's explicit requests, never window-fill. Absent = the classic
+   *  draft wake (batchSize new comments). */
+  mode?: "draft" | "rank";
+  candidatesToRank?: number;
+  requestedDrafts?: number;
 };
 
 export type SessionSummary = {
@@ -26,6 +32,8 @@ export type SessionSummary = {
   submitted?: number;
   dropped?: number;
   replies?: number;
+  /** Discover rank wakes: candidates scored via submit_candidate_ranking. */
+  ranked?: number;
   held?: number;
   reasons?: string[];
 };
@@ -48,10 +56,8 @@ export function computeNeed(
 }
 
 export function buildPrompt(order: WorkOrder): string {
-  const replies =
-    order.replyIds.length > 0
-      ? `Then draft replies for these pending incoming comments via submit_reply, ids: ${order.replyIds.join(", ")} (sensitivityHold anything hostile/press/legal/profane).`
-      : "There are no pending incoming comments — do not look for reply work.";
+  if (order.mode === "rank") return buildRankPrompt(order);
+  const replies = replyClause(order.replyIds);
   const batch =
     order.batchSize > 0
       ? `Work order: campaign ${order.campaignId}, batch size ${order.batchSize}. Draft for this campaign only, at most ${order.batchSize} comments.`
@@ -62,6 +68,39 @@ export function buildPrompt(order: WorkOrder): string {
     replies,
     `Finish by printing the autonomous-mode JSON summary as the LAST line of your output.`,
   ].join("\n");
+}
+
+/**
+ * A DISCOVER campaign's scout wake: the runner ranks unranked pool candidates
+ * (submit_candidate_ranking) and drafts ONLY the posts the user explicitly
+ * requested (submit_batch, requested-only on discover) — it never window-fills.
+ * The candidate pool is the product; the runner scores it, the user picks.
+ */
+function buildRankPrompt(order: WorkOrder): string {
+  const toRank = order.candidatesToRank ?? 0;
+  const toDraft = order.requestedDrafts ?? 0;
+  const rank =
+    toRank > 0
+      ? `Score up to ${toRank} unranked candidate post${toRank === 1 ? "" : "s"} for this campaign and submit the scores via submit_candidate_ranking.`
+      : `There are no unranked candidates to score this wake.`;
+  const drafts =
+    toDraft > 0
+      ? `Then draft the ${toDraft} post${toDraft === 1 ? "" : "s"} the user explicitly requested (status 'draft_requested') and submit via submit_batch.`
+      : `The user has requested no drafts — do NOT draft window-fill comments (this is a discover campaign; the pool is the product).`;
+  return [
+    `Run ONE autonomous Engager SCOUT micro-batch for a DISCOVER campaign using the engager-batch skill in AUTONOMOUS MODE (follow its references/autonomous.md rank flow exactly — no user is present, never ask a question).`,
+    `Work order: campaign ${order.campaignId}, mode RANK.`,
+    rank,
+    drafts,
+    replyClause(order.replyIds),
+    `Finish by printing the autonomous-mode JSON summary as the LAST line of your output.`,
+  ].join("\n");
+}
+
+function replyClause(replyIds: number[]): string {
+  return replyIds.length > 0
+    ? `Then draft replies for these pending incoming comments via submit_reply, ids: ${replyIds.join(", ")} (sensitivityHold anything hostile/press/legal/profane).`
+    : "There are no pending incoming comments — do not look for reply work.";
 }
 
 /**

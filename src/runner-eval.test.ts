@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CONFIG_DEFAULTS, type AgentConfig } from "./config.js";
 import { runCycle, type CycleDeps } from "./loop.js";
-import type { CampaignQueue, CampaignRow, EngagerMcp } from "./mcp.js";
+import type { CampaignQueue, CampaignRow, EngagerMcp, ServerWorkOrder } from "./mcp.js";
 import type { SessionResult, WorkOrder } from "./session.js";
 
 const CFG: AgentConfig = {
@@ -96,6 +96,17 @@ const session = (o: Partial<SessionResult>): SessionResult => ({
   summary: null,
   rawResult: "",
   durationMs: 1000,
+  ...o,
+});
+
+/** A DISCOVER campaign's rank work order (commentsToDraft always 0). */
+const rankOrder = (o: Partial<ServerWorkOrder>): ServerWorkOrder => ({
+  mode: "rank",
+  commentsToDraft: 0,
+  candidatesToRank: 0,
+  requestedDrafts: 0,
+  pendingReplies: 0,
+  windowEndsAt: 0,
   ...o,
 });
 
@@ -349,5 +360,92 @@ describe("agent-runner eval — the autonomous cycle contract", () => {
     expect(out.fatal).toBe(true);
     expect(out.note).toContain("not found");
     expect(state.orders).toHaveLength(0);
+  });
+
+  // ── Discover "rank" work orders (the scout wake) ──────────────────────────
+  it("rank wake with unranked candidates → ONE scout session, rank order, no draft top-up", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 10], // ranking writes scores on the pool — it never grows the queue
+      recommended: 0,
+      poolSufficient: false, // even a thin pool: a rank wake never triggers the draft top-up
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", ranked: 30, submitted: 0, reasons: [] } })],
+    };
+    const out = await runCycle(CFG, { serverOrder: rankOrder({ candidatesToRank: 30 }) }, fakeDeps(state));
+    expect(out.ok).toBe(true);
+    expect(out.note).toContain("ranked 30");
+    expect(state.orders).toEqual([
+      { campaignId: 7, batchSize: 0, replyIds: [], mode: "rank", candidatesToRank: 30, requestedDrafts: 0 },
+    ]);
+    expect(state.discoverCalls).toBe(0); // the scout scores the pool as it stands
+  });
+
+  it("rank wake with a fully-ranked pool + no requests/replies → clean skip, ZERO sessions", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [24],
+      recommended: 42, // an old CLI would size a draft here — the rank order forbids it
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [],
+    };
+    const out = await runCycle(
+      CFG,
+      { serverOrder: rankOrder({ candidatesToRank: 0, requestedDrafts: 0 }) },
+      fakeDeps(state),
+    );
+    expect(out).toMatchObject({ ran: false, ok: true });
+    expect(out.note).toContain("rank wake");
+    expect(state.orders).toHaveLength(0);
+  });
+
+  it("rank wake with explicit requested drafts → drafts them, verified by queue growth", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 12], // the 2 requested drafts landed as proposed messages
+      recommended: 0,
+      poolSufficient: true,
+      replies: [],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", submitted: 2, ranked: 5, reasons: [] } })],
+    };
+    const out = await runCycle(
+      CFG,
+      { serverOrder: rankOrder({ candidatesToRank: 5, requestedDrafts: 2 }) },
+      fakeDeps(state),
+    );
+    expect(out.ok).toBe(true);
+    expect(state.orders).toEqual([
+      { campaignId: 7, batchSize: 2, replyIds: [], mode: "rank", candidatesToRank: 5, requestedDrafts: 2 },
+    ]);
+    expect(out.note).toContain("submitted 2");
+  });
+
+  it("rank wake with only pending replies → reply-only scout session (batch 0)", async () => {
+    const state: FakeState = {
+      campaign: {},
+      queued: [10, 10],
+      recommended: 0,
+      poolSufficient: true,
+      replies: [31, 32],
+      discoverCalls: 0,
+      orders: [],
+      sessions: [session({ summary: { outcome: "ok", submitted: 0, replies: 2, reasons: [] } })],
+    };
+    const out = await runCycle(
+      CFG,
+      { serverOrder: rankOrder({ candidatesToRank: 0, requestedDrafts: 0 }) },
+      fakeDeps(state),
+    );
+    expect(out.ok).toBe(true);
+    expect(state.orders).toEqual([
+      { campaignId: 7, batchSize: 0, replyIds: [31, 32], mode: "rank", candidatesToRank: 0, requestedDrafts: 0 },
+    ]);
   });
 });
