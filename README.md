@@ -45,32 +45,30 @@ npx engager-agent
 The wizard **fails fast if the `claude` CLI is missing** (a hard requirement —
 sessions are headless Claude Code; no Codex/Gemini adapters yet), then
 **detects where your Engager already lives** instead of asking for a URL:
-existing entries in Claude Desktop / Claude Code configs (reusing their API
-key — no paste needed), a local dev server if one responds, or the Engager
-Cloud default; manual URL entry stays as the escape hatch.
+existing entries in Claude Desktop / Claude Code configs (endpoint only — their
+interactive credentials are never reused), a local dev server if one responds,
+or the Engager Cloud default; manual URL entry stays as the escape hatch.
 
-When you need a key, pick **"Sign in with your browser"**: the wizard shows a
-short code, opens the dashboard, you click Approve, and a full-scope agent API
-key is minted and delivered automatically (revocable any time in Settings →
-API keys). Pasting a key manually still works, and is the fallback on servers
-without device auth.
+The wizard always uses **browser approval** for a dedicated unattended-runner
+credential. The server, not the CLI, assigns its fixed `runner:execute` profile
+and binds it to this machine's stable runner id. There is no broad-key or manual
+paste fallback: an older server that cannot prove least privilege must be
+upgraded first.
 
-It then **offers to register the Engager MCP in Claude Code and Claude
-Desktop** (idempotent: it checks what's already registered, skips identical
-entries, and asks before changing anything — Desktop config writes are backed
-up and touch only the `engager` entry), installs the **entire Engager skill
-suite** (batch, setup, brain, campaign, status, tune — all sha256-verified) so
-your interactive Claude is fully equipped, picks the drafting model, lets you
-pick an agent-led campaign, runs a batch-size-1 dry-run session so the whole
-chain is proven, and finally offers **always-on autostart** (macOS launchd).
+It never registers that credential in Claude Code or Claude Desktop. Headless
+sessions receive it only through a temporary `0600` MCP config. The wizard
+installs only the sha256-verified `engager-batch` runner skill, picks the model
+and campaign, runs a batch-size-1 proof, and finally offers **always-on
+autostart** (macOS launchd). Connect interactive Claude/ChatGPT separately with
+an interactive-agent key from Engager Settings.
 
 **No campaign yet?** Not a dead end: the wizard saves your connection,
-finishes the MCP + skills setup, and hands you off — open Claude and say
-*"set up engager"* (or create a campaign in the dashboard), then re-run
-`engager-agent` and it resumes where it left off.
+then hands you off to the dashboard or a separately authorized interactive
+agent to create one. Re-run `engager-agent` and it resumes where it left off.
 
-Re-run any piece later: `engager-agent config` (full wizard) or
-`engager-agent register` (just the MCP registration).
+Re-run setup later with `engager-agent config`. The legacy
+`engager-agent register` command now refuses to expose runner credentials to
+interactive clients.
 
 ## Run
 
@@ -114,8 +112,10 @@ to the hosted Engager MCP can answer "how's my runner doing?" via
 
 ## Safety
 
-The runner adds cost guards only (`--max-turns`, daily session cap). Posting
-safety is entirely server-side and unchanged: manual campaigns land drafts as
+The runner adds cost guards (`--max-turns`, daily session cap) and uses a
+server-enforced least-privilege credential that cannot manage campaigns,
+billing, safety, setup, or direct posting. Posting safety remains server-side:
+manual campaigns land drafts as
 `proposed` for dashboard approval; auto campaigns schedule through the paced
 publisher, which is still gated per-post by caps, active hours, the kill
 switch, and exactly-once send.

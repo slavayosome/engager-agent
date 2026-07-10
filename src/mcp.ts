@@ -117,6 +117,39 @@ export type SkillManifest = {
   files: SkillManifestFile[];
 };
 
+/** Must stay byte-for-byte aligned with Engager's temporary runner-v1 bridge.
+ * The runner validates this after every MCP connect, so a manually substituted
+ * interactive/admin key fails before any headless session can inherit it. */
+export const RUNNER_V1_TOOL_NAMES = [
+  "report_runner_status",
+  "list_campaigns",
+  "get_ops_summary",
+  "get_queue_status",
+  "list_incoming_comments",
+  "discover",
+  "list_skills",
+  "get_skill_file",
+  "get_refresh_batch",
+  "submit_candidate_ranking",
+  "list_candidates",
+  "get_drafting_context",
+  "submit_batch",
+  "submit_reply",
+] as const;
+
+export function assertRunnerToolSurface(names: string[]): void {
+  const expected = [...RUNNER_V1_TOOL_NAMES].sort();
+  const actual = [...new Set(names)].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((name, index) => name !== expected[index])
+  ) {
+    throw new Error(
+      "credential is not the dedicated Engager runner profile (tool surface mismatch); reauthorize this runner",
+    );
+  }
+}
+
 export class EngagerMcp {
   private client: Client | null = null;
 
@@ -131,7 +164,14 @@ export class EngagerMcp {
     });
     const client = new Client({ name: "engager-agent", version: "0.1.0" });
     await client.connect(transport);
-    this.client = client;
+    try {
+      const tools = await client.listTools();
+      assertRunnerToolSurface(tools.tools.map((tool) => tool.name));
+      this.client = client;
+    } catch (error) {
+      await client.close();
+      throw error;
+    }
   }
 
   async close(): Promise<void> {

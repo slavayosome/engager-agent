@@ -9,12 +9,11 @@ import {
   statusCommand,
   stopCommand,
 } from "./commands.js";
-import { ensureRunnerId, loadConfig, loadPartialConfig, saveConfig } from "./config.js";
+import { loadConfig, loadPartialConfig, saveConfig } from "./config.js";
 import { controlPoll } from "./heartbeat.js";
 import { log } from "./log.js";
 import { runCycle, runLoop } from "./loop.js";
 import { writeHalt } from "./markers.js";
-import { offerRegistration } from "./register.js";
 import { serviceState } from "./service.js";
 import { runWizard } from "./wizard.js";
 
@@ -29,7 +28,6 @@ function version(): string {
  *
  *   engager-agent                 first run: setup wizard; then: start the loop
  *   engager-agent config          re-run the wizard (rotate key, switch campaign/model)
- *   engager-agent register        (re-)register the Engager MCP in Claude Code + Desktop
  *   engager-agent status [--json] runner health: state, last cycle, markers, service
  *   engager-agent pause [--for 2h]  hold drafting (marker; survives restarts)
  *   engager-agent resume          clear pause/halt markers + restart the service
@@ -48,7 +46,6 @@ const USAGE = `engager-agent — local autonomous runner for Engager agent-led c
 
   engager-agent                 first run: setup wizard; then: start the loop
   engager-agent config          re-run the wizard (rotate key, switch campaign/model)
-  engager-agent register        (re-)register the Engager MCP in Claude Code + Desktop
   engager-agent status [--json] runner health: state, last cycle, markers, service
   engager-agent pause [--for 2h]  hold drafting (marker; survives restarts)
   engager-agent resume          clear pause/halt markers + restart the service
@@ -94,15 +91,10 @@ async function main(): Promise<void> {
       await runWizard(loadConfig() ?? loadPartialConfig() ?? undefined);
       return;
     case "register": {
-      // A partial (campaign-less) config is enough — registration only needs
-      // the endpoint + key.
-      const partial = loadPartialConfig();
-      if (!partial?.mcpUrl || !partial.apiKey) {
-        log("not configured yet — run: engager-agent");
-        process.exit(1);
-      }
-      await offerRegistration(partial.mcpUrl, partial.apiKey);
-      return;
+      log(
+        "runner credentials cannot be registered in Claude Code or Desktop — create a separate interactive-agent key in Engager Settings",
+      );
+      process.exit(1);
     }
     case "status":
       statusCommand(has("--json"));
@@ -138,7 +130,7 @@ async function main(): Promise<void> {
   }
   if (!cfg) {
     const done = await runWizard(loadPartialConfig() ?? undefined);
-    // null = useful-but-incomplete (connected + registered + skills, no
+    // null = useful-but-incomplete (runner connected + skills, no
     // campaign yet): the wizard already said how to continue — exit cleanly.
     if (!done) return;
     cfg = done;
@@ -148,8 +140,6 @@ async function main(): Promise<void> {
       return;
     }
   }
-  cfg = ensureRunnerId(cfg);
-
   const campaignOverride = val("--campaign");
   if (campaignOverride) cfg = { ...cfg, campaignId: Number(campaignOverride) };
 
