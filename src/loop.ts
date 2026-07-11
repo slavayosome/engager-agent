@@ -1,318 +1,321 @@
-import { saveConfig, type AgentConfig } from "./config.js";
-import { controlPoll, type HeartbeatState } from "./heartbeat.js";
+import type { AgentConfig } from "./config.js";
+import type { RunnerWorkPurpose } from "@engager/runner-contract";
+import { isEngineReady, type AgentEngine, type EngineDetection } from "./engine.js";
+import { engineFor } from "./engines/index.js";
+import { executeOneClaim, type ExecutionOutcome } from "./executor.js";
+import { RunnerFault, asRunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
+import { connectAndNegotiate, controlPoll, type HeartbeatState } from "./heartbeat.js";
 import { log } from "./log.js";
+import { readJournal } from "./journal.js";
 import { clearHalt, readHalt, readPause, writeHalt } from "./markers.js";
-import { EngagerMcp, type RunnerDirective, type ServerWorkOrder } from "./mcp.js";
-import {
-  computeNeed,
-  fmtTokens,
-  runSession,
-  type SessionResult,
-  type SessionTokens,
-  type WorkOrder,
-} from "./session.js";
-import { skillsRoot, syncSkill } from "./skills.js";
 import { readStatus, writeStatus, type CycleInfo, type RunnerState } from "./status.js";
-import { snapshot, verifySession, type Verdict } from "./verify.js";
+import { providerSessionsToday } from "./session-usage.js";
 
-/**
- * The runner loop, on two cadences: a cheap CONTROL POLL every ~5 minutes (one
- * heartbeat → the server's run/idle/stop directive, plus local pause markers),
- * and a DRAFTING CYCLE every `intervalMinutes` when the directive allows.
- * Everything deterministic happens here with zero LLM cost: queue math, pool
- * top-up, reply listing, skill-hash verification. A headless agent session is
- * spawned only when there is real headroom, and its result is verified against
- * server state (never the transcript).
- *
- * Failure semantics ("never fail silently"):
- * - N consecutive failed cycles, a stop directive, or a fatal preflight → a
- *   DELIBERATE HALT: ~/.engager/halted.json is written and the process exits
- *   0 under --service (launchd's KeepAlive/SuccessfulExit=false leaves it
- *   down) or 1 when run manually. Only `engager-agent resume` or a manual
- *   start clears it.
- * - Crashes exit non-zero → launchd restarts them. Transient faults self-heal;
- *   deliberate halts stay down and visible.
- */
-
-const MAX_CONSECUTIVE_FAILURES = 3;
+export const MAX_CONSECUTIVE_FAILURES = 3;
 const CONTROL_POLL_MS = 5 * 60_000;
 
-/** The cadence a directive pushes: prefer the STABLE base from newer servers
- *  (their intervalMinutes is pre-jittered per wake window — persisting it would
- *  churn config every window). Positive numbers only; undefined = no opinion. */
-export function pushedCadence(
-  d: { intervalMinutes?: number | null; intervalMinutesBase?: number | null } | null,
-): number | undefined {
-  const v = d?.intervalMinutesBase ?? d?.intervalMinutes;
-  return typeof v === "number" && v > 0 ? Math.round(v) : undefined;
-}
-
-/** Delay to the next drafting wake: proportional jitter (0.75–1.25× the
- *  cadence), never under a minute. A fixed ±5min on an hourly wake still lands
- *  near the same minute-marks — a bot signature visible through Unipile reads.
- *  Integer ms: floats in wake times lost every control poll on servers ≤0.3.1. */
-export function nextWakeDelayMs(intervalMinutes: number, rand: () => number = Math.random): number {
-  return Math.round(Math.max(60_000, intervalMinutes * 60_000 * (0.75 + rand() * 0.5)));
-}
-
-/** Delay to the next control tick (4–6.5 min): a heartbeat every 300.000s sharp
- *  is its own automation signature; isStale's 2×interval+10min window absorbs it. */
 export function controlTickDelayMs(rand: () => number = Math.random): number {
   return Math.round(CONTROL_POLL_MS * (0.8 + rand() * 0.5));
 }
 
-export type CycleOutcome = {
-  ran: boolean;
-  ok: boolean;
-  note: string;
-  /** A permanent condition (campaign gone/server-led) — halt, don't retry. */
-  fatal?: boolean;
-  /** Kept for --json consumers; humans see tokens. */
-  costUsd?: number;
-  tokens?: SessionTokens;
+export type ControlCycleDeps = {
+  engine: (
+    name: AgentConfig["engine"],
+    executablePath?: string,
+    configDir?: string,
+  ) => AgentEngine;
+  connect: typeof connectAndNegotiate;
+  execute: typeof executeOneClaim;
+  hasJournal: () => boolean;
 };
 
-/** Injection seam for the deterministic eval harness (evals/agent-runner) —
- *  production always uses the real MCP client + claude session. */
-export type CycleDeps = {
-  connect: (cfg: AgentConfig) => Promise<EngagerMcp>;
-  session: typeof runSession;
-  sync: typeof syncSkill;
+const REAL_DEPS: ControlCycleDeps = {
+  engine: engineFor,
+  connect: connectAndNegotiate,
+  execute: executeOneClaim,
+  hasJournal: () => readJournal() != null,
 };
 
-const REAL_DEPS: CycleDeps = {
-  connect: async (cfg) => {
-    const mcp = new EngagerMcp(cfg.mcpUrl, cfg.apiKey);
-    await mcp.connect();
-    return mcp;
-  },
-  session: runSession,
-  sync: syncSkill,
-};
-
-export async function runCycle(
-  cfg: AgentConfig,
-  opts: {
-    batchOverride?: number;
-    /** Batch size from the server's heartbeat workOrder (commentsToDraft).
-     *  Present (including 0) = the server sized this wake; absent = old
-     *  server → fall back to local computeNeed. Superseded by serverOrder. */
-    serverBatch?: number;
-    /** The full server work order from the heartbeat — carries the rank mode +
-     *  candidate/request counts for DISCOVER campaigns. Preferred over
-     *  serverBatch; absent = old server → local computeNeed sizing. */
-    serverOrder?: ServerWorkOrder;
+export async function runControlCycle(
+  config: AgentConfig,
+  version: string,
+  state: HeartbeatState,
+  options: {
+    allowWork?: boolean;
+    signal?: AbortSignal;
+    claimPurpose?: RunnerWorkPurpose;
+    /** Runs synchronously after protocol/surface negotiation and before any
+     * claim or recovery mutation. Service mode uses it as its durable startup
+     * milestone. */
+    onNegotiated?: (
+      protocol: "v1" | "2.1",
+      quotaState: Record<string, unknown>,
+      engineReady: boolean,
+    ) => void;
   } = {},
-  deps: CycleDeps = REAL_DEPS,
-): Promise<CycleOutcome> {
-  const mcp = await deps.connect(cfg);
+  deps: ControlCycleDeps = REAL_DEPS,
+): Promise<{ outcome: ExecutionOutcome; protocol: "v1" | "2.1"; quotaState: Record<string, unknown> }> {
+  let engine: AgentEngine | null = null;
+  let detectionFailure: RunnerFault | null = null;
+  let detection: EngineDetection;
   try {
-    // 0. Skill freshness — a stale skill is the top silent-failure source.
-    const sync = await deps.sync(mcp, "engager-batch", skillsRoot(cfg.cli));
-    if (sync.updated.length > 0) {
-      log(`skill engager-batch ${sync.version}: refreshed ${sync.updated.join(", ")}`);
-    }
-
-    // 1. Cheap preflight (no LLM). Permanent conditions are FATAL — they mirror
-    // the server's stop directive so old servers get the same halt behavior.
-    const campaigns = await mcp.listCampaigns();
-    const campaign = campaigns.find((c) => c.id === cfg.campaignId);
-    if (!campaign) {
-      return { ran: false, ok: false, fatal: true, note: `campaign ${cfg.campaignId} not found` };
-    }
-    if (campaign.status !== "active") {
-      return { ran: false, ok: true, note: `campaign ${cfg.campaignId} is ${campaign.status} — idle` };
-    }
-    if (campaign.draftingMode !== "agent") {
+    engine = deps.engine(
+      config.engine,
+      config.enginePath,
+      config.engineConfigDir,
+    );
+    detection = await engine.detect();
+  } catch (error) {
+    detectionFailure = asRunnerFault(error);
+    detection = {
+      name: config.engine,
+      installed: true,
+      supported: false,
+      authenticated: null,
+      detail: `engine probe failed: ${detectionFailure.message}`,
+    };
+  }
+  const localCapped = state.sessionsToday >= config.dailySessionCap;
+  const quotaBlock = activeQuotaBlock(state.quotaState);
+  const quotaState = localCapped
+    ? quota("exhausted", "local_daily_session_cap")
+    : quotaBlock ??
+      (detectionFailure
+        ? quota("error", "engine_probe_failed")
+        : quotaFromDetection(detection));
+  const heartbeat = { ...state, quotaState };
+  const { mcp, negotiated } = await deps.connect(config, version, heartbeat, options.signal);
+  try {
+    const directive = negotiated.directive;
+    const directiveCode = "code" in directive ? directive.code : undefined;
+    const directiveNextPollAt = "nextPollAt" in directive ? directive.nextPollAt : undefined;
+    if (directive.directive === "stop") {
       return {
-        ran: false,
-        ok: false,
-        fatal: true,
-        note: `campaign ${cfg.campaignId} is server-led — this runner only drives agent-led campaigns`,
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: {
+          ran: false,
+          ok: false,
+          note: `server stop: ${directive.reason}`,
+          errorCode: directiveCode ?? "SERVER_STOP",
+          fatal: true,
+        },
+      };
+    }
+    const upgradeBlocked =
+      directive.directive === "idle" &&
+      (directiveCode === "runner_upgrade_required" || directiveCode === "runner_v2_disabled");
+    if (!upgradeBlocked) {
+      options.onNegotiated?.(
+        negotiated.protocol,
+        quotaState,
+        engine != null && isEngineReady(detection),
+      );
+    }
+    const recoveryPending = deps.hasJournal();
+    if (recoveryPending) {
+      const canUseEngine =
+        engine != null &&
+        isEngineReady(detection) &&
+        !localCapped &&
+        !quotaBlock &&
+        options.allowWork !== false;
+      const cognitionFault = !engine || detectionFailure
+        ? new RunnerFault("ENGINE_FAILED", detection.detail ?? "engine probe failed", {
+            impact: "The recovery journal was retained without starting cognition.",
+            recovery: "Run `engager-agent doctor`, repair the engine, then retry.",
+          })
+        : !isEngineReady(detection)
+          ? new RunnerFault(
+              !detection.installed
+                ? "ENGINE_NOT_FOUND"
+                : detection.authenticated === false
+                  ? "ENGINE_AUTH_REQUIRED"
+                  : "ENGINE_UNSUPPORTED_VERSION",
+              detection.detail ?? `${config.engine} is not ready`,
+              {
+                impact: "The recovery journal was retained without starting cognition.",
+                recovery: "Run `engager-agent doctor`, repair the engine, then retry.",
+              },
+            )
+          : localCapped || quotaBlock
+            ? new RunnerFault("ENGINE_QUOTA", "provider cognition is currently quota-blocked", {
+                impact: "Receipt recovery may continue, but no new cognition was started.",
+                recovery: "Wait for the local day boundary or raise the explicit local cap.",
+                retryable: true,
+              })
+            : new RunnerFault("RUNNER_PAUSED", "runner is paused locally", {
+                impact: "Receipt recovery may continue, but no new cognition was started.",
+                recovery: "Run `engager-agent resume` to permit cognition.",
+                retryable: true,
+              });
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: await deps.execute(config, mcp, engine ?? unavailableEngine(config.engine, cognitionFault), {
+          signal: options.signal,
+          allowCognition: canUseEngine,
+          cognitionFault,
+          canClaim: () => options.allowWork !== false && readPause() == null,
+          ...(options.claimPurpose ? { claimPurpose: options.claimPurpose } : {}),
+        }),
+      };
+    }
+    if (directive.directive === "idle") {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: {
+          ran: false,
+          ok: !upgradeBlocked,
+          note: directive.reason,
+          ...(upgradeBlocked
+            ? { errorCode: "CONTRACT_UPGRADE_REQUIRED" }
+            : directiveCode
+              ? { errorCode: directiveCode }
+              : {}),
+          ...(directiveNextPollAt != null ? { nextPollAt: directiveNextPollAt } : {}),
+        },
+      };
+    }
+    if (options.allowWork === false) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: { ran: false, ok: true, note: "paused locally; no work was claimed" },
+      };
+    }
+    if (localCapped) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: {
+          ran: false,
+          ok: false,
+          note: `local daily session cap reached (${config.dailySessionCap})`,
+          errorCode: "ENGINE_QUOTA",
+        },
+      };
+    }
+    if (quotaBlock) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: {
+          ran: false,
+          ok: false,
+          note: `provider cooldown is active until ${new Date(Number(quotaBlock.resetsAt)).toISOString()}`,
+          errorCode:
+            quotaBlock.reasonCode === "engine_overloaded" ? "ENGINE_OVERLOADED" : "ENGINE_QUOTA",
+          nextPollAt: Number(quotaBlock.resetsAt),
+        },
+      };
+    }
+    if (!engine || !isEngineReady(detection)) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: {
+          ran: false,
+          ok: false,
+          note: detection.detail ?? `${config.engine} is not ready`,
+          errorCode: detectionFailure
+            ? "ENGINE_FAILED"
+            : !detection.installed
+            ? "ENGINE_NOT_FOUND"
+            : detection.authenticated === false
+              ? "ENGINE_AUTH_REQUIRED"
+              : "ENGINE_UNSUPPORTED_VERSION",
+        },
       };
     }
 
-    const pre = await mcp.campaignQueue(cfg.campaignId);
-    const replies = await mcp.listIncoming(cfg.campaignId);
-
-    // DISCOVER campaigns send a "rank" work order: the runner is a SCOUT, not a
-    // writer — it scores unranked candidates and drafts ONLY explicit requests,
-    // and commentsToDraft is always 0. Old CLIs saw only commentsToDraft, so a
-    // rank wake looked like "nothing to do" and never ran — this is the fix.
-    const rank = opts.serverOrder?.mode === "rank";
-    const candidatesToRank = rank ? (opts.serverOrder?.candidatesToRank ?? 0) : 0;
-    const requestedDrafts = rank ? (opts.serverOrder?.requestedDrafts ?? 0) : 0;
-    // Curated-pool triage this wake — BOTH modes. This is a first-class reason to
-    // WAKE: a manual/draft campaign whose draft window is full (commentsToDraft 0)
-    // must still refresh its curated pool. Absent on pre-curation servers → 0.
-    const triageToRefresh = opts.serverOrder?.triage?.toTriage ?? 0;
-
-    const need =
-      opts.batchOverride ??
-      opts.serverOrder?.commentsToDraft ??
-      opts.serverBatch ??
-      computeNeed(pre, campaign, cfg.intervalMinutes);
-    const sizedBy =
-      opts.batchOverride != null
-        ? "override"
-        : opts.serverOrder != null || opts.serverBatch != null
-          ? "server work order"
-          : "local fallback";
-
-    if (rank) {
-      log(`rank wake: ${candidatesToRank} to score, ${triageToRefresh} to triage, ${requestedDrafts} requested, replies ${replies.length}`);
-      if (candidatesToRank === 0 && triageToRefresh === 0 && requestedDrafts === 0 && replies.length === 0) {
-        return {
-          ran: false,
-          ok: true,
-          note: `nothing to do — rank wake, pool fully triaged (${pre.candidatePool.size}/${pre.candidatePool.target})`,
-        };
-      }
-    } else {
-      log(`batch ${need} (${sizedBy}), ${triageToRefresh} to triage, replies ${replies.length}`);
-      if (need === 0 && triageToRefresh === 0 && replies.length === 0) {
-        return {
-          ran: false,
-          ok: true,
-          note: `nothing to do — batch 0 (${sizedBy}), triage 0, runway ${pre.runwayDays}d, pool ${pre.candidatePool.size}/${pre.candidatePool.target}`,
-        };
-      }
+    if (negotiated.protocol === "2.1") {
+      return {
+        protocol: "2.1",
+        quotaState,
+        outcome: await deps.execute(config, mcp, engine, {
+          signal: options.signal,
+          canClaim: () => options.allowWork !== false && readPause() == null,
+          ...(options.claimPurpose ? { claimPurpose: options.claimPurpose } : {}),
+        }),
+      };
     }
-
-    // 2. Pool top-up (still no LLM) — the scheduled server sweeps are demand-
-    // aware, but a same-hour top-up shortens a thin-pool session's discovery
-    // work. Draft wakes only: a rank wake scores the pool as it stands (its
-    // commentsToDraft is 0, so this never fires for it).
-    if (need > 0 && !pre.candidatePool.sufficient) {
-      try {
-        await mcp.discover(cfg.campaignId);
-        log(`pool thin (${pre.candidatePool.size}/${pre.candidatePool.target}) — ran a top-up sweep`);
-      } catch (e) {
-        log(`top-up sweep failed (non-fatal): ${(e as Error).message}`);
-      }
-    }
-
-    // 3. The agent session, with a fully-resolved work order.
-    // Only carry triageToRefresh when there's triage to do (keeps the order clean
-    // and pre-curation-identical when the pool is full / server sends no triage).
-    const triagePart = triageToRefresh > 0 ? { triageToRefresh } : {};
-    const order: WorkOrder = rank
-      ? {
-          campaignId: cfg.campaignId,
-          batchSize: requestedDrafts,
-          replyIds: replies.map((r) => r.id),
-          mode: "rank",
-          candidatesToRank,
-          requestedDrafts,
-          ...triagePart,
-        }
-      : {
-          campaignId: cfg.campaignId,
-          batchSize: need,
-          replyIds: replies.map((r) => r.id),
-          ...triagePart,
-        };
-    log(
-      rank
-        ? `session start: RANK ${candidatesToRank} to score, ${triageToRefresh} to triage, ${requestedDrafts} requested, replies ${order.replyIds.length}, model ${cfg.model}`
-        : `session start: batch ${order.batchSize}, ${triageToRefresh} to triage, replies ${order.replyIds.length}, model ${cfg.model}`,
-    );
-    const result = await deps.session(cfg, order);
-
-    // 4. Verify against server state; a claimed-but-unlanded success FAILS.
-    const post = await mcp.campaignQueue(cfg.campaignId);
-    let verdict = verifySession(snapshot(pre), snapshot(post), result.summary, result.exitCode);
-    logSession(result, verdict);
-    let costUsd = result.costUsd;
-    let tokens = result.tokens;
-
-    // 5. One narrowed retry (batch size 1) when the failure mode warrants it.
-    if (!verdict.ok && verdict.retryNarrowed && order.batchSize > 1) {
-      log("retrying once, narrowed to batch size 1");
-      // Rank wakes: the retry is a single requested draft — the ranking already
-      // landed (it doesn't grow the queue, so it never triggers retryNarrowed),
-      // so don't re-score the whole pool on the retry.
-      // Triage already landed on the first attempt — never re-triage on the retry.
-      const narrowed: WorkOrder =
-        order.mode === "rank"
-          ? { ...order, batchSize: 1, requestedDrafts: 1, candidatesToRank: 0, triageToRefresh: 0, replyIds: [] }
-          : { ...order, batchSize: 1, triageToRefresh: 0, replyIds: [] };
-      const retry = await deps.session(cfg, narrowed);
-      const post2 = await mcp.campaignQueue(cfg.campaignId);
-      verdict = verifySession(snapshot(post), snapshot(post2), retry.summary, retry.exitCode);
-      logSession(retry, verdict);
-      costUsd = retry.costUsd ?? costUsd;
-      tokens = retry.tokens ?? tokens;
-    }
-
     return {
-      ran: true,
-      ok: verdict.ok,
-      note: verdict.note,
-      ...(costUsd != null ? { costUsd } : {}),
-      ...(tokens ? { tokens } : {}),
+      protocol: "v1",
+      quotaState,
+      outcome: {
+        ran: false,
+        ok: false,
+        note:
+          "runner 0.9 executes leased protocol v2.1 only; this organization is still on the retired v1 control surface",
+        errorCode: "CONTRACT_UPGRADE_REQUIRED",
+      },
     };
   } finally {
     await mcp.close();
   }
 }
 
-function logSession(result: SessionResult, verdict: Verdict): void {
-  // Tokens, not dollars: on subscription auth the CLI's total_cost_usd is only
-  // API-equivalent accounting, and reads as a bill when it isn't one.
-  const usage = result.tokens ? ` · ${fmtTokens(result.tokens)}` : "";
-  log(
-    `session done in ${Math.round(result.durationMs / 1000)}s${usage} · ${
-      verdict.ok ? "OK" : "FAILED"
-    } — ${verdict.note}`,
-  );
-  if (!verdict.ok && result.summary == null) {
-    log(`transcript tail: ${result.rawResult.slice(-600)}`);
-  }
+function unavailableEngine(name: AgentConfig["engine"], fault: RunnerFault): AgentEngine {
+  return {
+    name,
+    detect: async () => ({ name, installed: false, supported: false, authenticated: false }),
+    run: async () => {
+      throw fault;
+    },
+  };
 }
 
-export type LoopOpts = {
-  /** Running under launchd: deliberate halts exit 0 so KeepAlive leaves us down. */
-  service?: boolean;
-  version?: string;
-};
+function quotaFromDetection(detection: EngineDetection): Record<string, unknown> {
+  if (!detection.installed) return quota("unavailable", "engine_not_found");
+  if (!detection.supported) return quota("unavailable", "engine_unsupported_version");
+  if (detection.authenticated === false) return quota("unavailable", "engine_auth_required");
+  if (detection.authenticated !== true) return quota("error", "engine_auth_probe_unknown");
+  return quota("available", "engine_ready");
+}
 
-export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<never> {
-  const service = opts.service ?? false;
-  const version = opts.version ?? "0";
-  const startedAt = Date.now();
-
-  let consecutiveFailures = 0;
-  let sessionsToday = 0;
-  let day = new Date().toISOString().slice(0, 10);
-  let lastCycle: CycleInfo | undefined;
-  let lastCostUsd: number | undefined;
-  let lastTokens: SessionTokens | undefined;
-  let nextCycleAt = Date.now(); // first drafting cycle as soon as the directive allows
-  let stopping: string | null = null;
-
-  const hbState = (state: RunnerState): HeartbeatState => ({
-    state,
-    ...(lastCycle ? { lastCycle } : {}),
-    consecutiveFailures,
-    sessionsToday,
-    nextWakeAt: nextCycleAt,
-  });
-  /** Fire-and-forget heartbeat for terminal states (halt/stop). */
-  const safePoll = async (state: RunnerState): Promise<void> => {
-    try {
-      await controlPoll(cfg, version, hbState(state));
-    } catch {
-      /* best-effort */
-    }
+function quota(status: string, reasonCode: string, resetsAt?: number): Record<string, unknown> {
+  return {
+    status,
+    reasonCode,
+    observedAt: Date.now(),
+    ...(resetsAt != null ? { resetsAt } : {}),
   };
-  const put = (state: RunnerState, reason?: string, nextWakeAt?: number): void => {
+}
+
+export type LoopOptions = { service?: boolean; version?: string };
+
+export async function runLoop(config: AgentConfig, options: LoopOptions = {}): Promise<never> {
+  const service = options.service ?? false;
+  const version = options.version ?? "0";
+  const startedAt = Date.now();
+  const today = () => new Date().toISOString().slice(0, 10);
+  const prior = readStatus();
+  let sessionDay = today();
+  let sessionsToday = providerSessionsToday();
+  let consecutiveFailures = 0;
+  let lastCycle: CycleInfo | undefined = prior?.lastCycle;
+  let protocol: "v1" | "2.1" | undefined;
+  let protocolVerifiedAt: number | undefined;
+  let engineReadyAt: number | undefined;
+  let startupVerifiedAt: number | undefined;
+  let quotaState: Record<string, unknown> | undefined = prior?.quotaState;
+  let stopping: string | null = null;
+  let activeAbort: AbortController | null = null;
+
+  const put = (state: RunnerState, reason?: string, nextPollAt?: number): boolean =>
     writeStatus({
+      schemaVersion: 2,
       pid: process.pid,
       version,
-      ...(cfg.runnerId ? { runnerId: cfg.runnerId } : {}),
-      campaignId: cfg.campaignId,
-      model: cfg.model,
+      runnerId: config.runnerId,
+      engine: config.engine,
+      ...(config.model ? { model: config.model } : {}),
+      ...(protocol ? { protocol } : {}),
+      ...(protocolVerifiedAt != null ? { protocolVerifiedAt } : {}),
+      ...(engineReadyAt != null ? { engineReadyAt } : {}),
+      ...(startupVerifiedAt != null ? { startupVerifiedAt } : {}),
       state,
       ...(reason ? { stateReason: reason } : {}),
       startedAt,
@@ -320,167 +323,229 @@ export async function runLoop(cfg: AgentConfig, opts: LoopOpts = {}): Promise<ne
       ...(lastCycle ? { lastCycle } : {}),
       consecutiveFailures,
       sessionsToday,
-      ...(nextWakeAt != null ? { nextWakeAt } : {}),
-      ...(lastCostUsd != null ? { lastSessionCostUsd: lastCostUsd } : {}),
-      ...(lastTokens ? { lastSessionTokens: lastTokens } : {}),
+      sessionDay,
+      ...(nextPollAt != null ? { nextPollAt } : {}),
+      ...(quotaState ? { quotaState } : {}),
     });
+  const safeTerminalHeartbeat = async (state: RunnerState): Promise<void> => {
+    try {
+      await controlPoll(config, version, {
+        state,
+        ...(lastCycle ? { lastCycle } : {}),
+        consecutiveFailures,
+        sessionsToday,
+        quotaState,
+      });
+    } catch {
+      /* terminal heartbeat is best effort */
+    }
   };
-  const haltLoudly = async (reason: string): Promise<never> => {
+  const halt = async (reason: string): Promise<never> => {
     writeHalt(reason, consecutiveFailures);
     put("halted", reason);
-    await safePoll("halted");
-    log(
-      `HALTED: ${reason} — will not restart on its own. Check ~/.engager/logs, then: engager-agent resume`,
-    );
+    await safeTerminalHeartbeat("halted");
+    log(`HALTED: ${reason} — run \`engager-agent doctor\`, then \`engager-agent resume\``);
     process.exit(service ? 0 : 1);
   };
 
-  // A prior deliberate halt must never be silently resumed by launchd/login.
-  const halt = readHalt();
-  if (halt) {
-    if (service) {
-      log(`still halted (${halt.reason}, since ${new Date(halt.at).toISOString()}) — run: engager-agent resume`);
-      put("halted", halt.reason);
-      await safePoll("halted");
-      process.exit(0);
-    }
-    clearHalt(); // a manual start is explicit consent to resume
-    log(`previous halt cleared by manual start (was: ${halt.reason})`);
+  const existingHalt = readHalt();
+  if (existingHalt) {
+    if (service) await halt(existingHalt.reason);
+    clearHalt();
+    log(`manual run cleared prior halt: ${existingHalt.reason}`);
   }
-
-  const onSignal = (sig: string): void => {
-    if (stopping) process.exit(130); // second signal: force
-    stopping = sig;
+  const onSignal = (signal: string): void => {
+    stopping ??= signal;
+    activeAbort?.abort();
     wake();
   };
   process.on("SIGTERM", () => onSignal("SIGTERM"));
   process.on("SIGINT", () => onSignal("SIGINT"));
 
-  log(
-    `engager-agent loop: campaign ${cfg.campaignId}, drafting every ~${cfg.intervalMinutes}min, ` +
-      `control poll every ${Math.round(CONTROL_POLL_MS / 60_000)}min, ` +
-      `daily session cap ${cfg.dailySessionCap}, model ${cfg.model}${service ? ", service mode" : ""}`,
-  );
-  // Visibility only: recovery needs no special handling — the first cycle runs
-  // immediately, and the server's work order sizes it from what's left of the
-  // window (missed slots are gone by design, never backfilled).
-  const prior = readStatus();
-  if (prior?.nextWakeAt != null && Date.now() - prior.nextWakeAt > 15 * 60_000) {
-    log(
-      `restarted after oversleeping a wake (planned ${new Date(prior.nextWakeAt).toISOString()}) — first cycle runs now`,
-    );
-  }
+  log(`engager-agent ${version}: org runner ${config.runnerId}, engine ${config.engine}, fail-closed v2.1 control`);
   put("starting");
 
   for (;;) {
     if (stopping) {
       put("stopped", stopping);
-      await safePoll("stopped");
+      await safeTerminalHeartbeat("stopped");
       log(`received ${stopping} — clean shutdown`);
       process.exit(0);
     }
-
-    const today = new Date().toISOString().slice(0, 10);
-    if (today !== day) {
-      day = today;
-      sessionsToday = 0;
+    if (today() !== sessionDay) {
+      sessionDay = today();
+      sessionsToday = providerSessionsToday();
     }
-
-    // 1. Control poll: heartbeat out, directive back. A failed poll is NOT a
-    // failed cycle — keep the last known intent and try again next tick.
-    const paused = readPause();
-    let directive: RunnerDirective | null = null;
+    sessionsToday = providerSessionsToday();
+    const pause = readPause();
+    activeAbort = new AbortController();
+    put(pause ? "paused-local" : "preflight", pause ? "paused locally" : undefined);
+    let nextPollAt = Date.now() + controlTickDelayMs();
     try {
-      directive = await controlPoll(cfg, version, hbState(paused ? "paused-local" : "sleeping"));
-    } catch (e) {
-      log(`control poll failed (non-fatal): ${(e as Error).message}`);
+      const result = await runControlCycle(
+        config,
+        version,
+        {
+          state: pause ? "paused-local" : "preflight",
+          ...(lastCycle ? { lastCycle } : {}),
+          consecutiveFailures,
+          sessionsToday,
+          nextWakeAt: nextPollAt,
+          quotaState,
+        },
+        {
+          allowWork: !pause,
+          signal: activeAbort.signal,
+          onNegotiated: (
+            negotiatedProtocol,
+            negotiatedQuotaState,
+            engineReady,
+          ) => {
+            const verifiedAt = Date.now();
+            protocol = negotiatedProtocol;
+            protocolVerifiedAt = verifiedAt;
+            if (engineReady) engineReadyAt = verifiedAt;
+            if (!service || engineReady) startupVerifiedAt ??= verifiedAt;
+            quotaState = negotiatedQuotaState;
+            const milestone = engineReady
+              ? "current server negotiation and engine readiness verified"
+              : "current server negotiation verified; engine is not ready";
+            if (!put("preflight", milestone) && service) {
+              throw new RunnerFault(
+                "INTERNAL_ERROR",
+                "durable startup negotiation milestone could not be persisted",
+                {
+                  impact: "No work was claimed because service startup could not be verified durably.",
+                  recovery: "Repair ~/.engager ownership and disk health, then retry.",
+                },
+              );
+            }
+          },
+        },
+      );
+      protocol = result.protocol;
+      protocolVerifiedAt = Date.now();
+      quotaState = result.quotaState;
+      const outcome = result.outcome;
+      lastCycle = cycleInfoFromOutcome(outcome);
+      if (outcome.fatal) await halt(outcome.note);
+      if (outcome.ok) consecutiveFailures = 0;
+      else if (countsTowardHalt(outcome.errorCode)) consecutiveFailures += 1;
+      if (outcome.nextPollAt != null) nextPollAt = Math.min(nextPollAt, outcome.nextPollAt);
+      log(`${outcome.ok ? "cycle ok" : "cycle idle/failure"}: ${outcome.note}`);
+    } catch (error) {
+      const fault = asRunnerFault(error);
+      lastCycle = {
+        at: Date.now(),
+        ran: false,
+        ok: false,
+        note: sanitizeTerminalText(fault.message).slice(0, 400),
+        errorCode: fault.code,
+      };
+      if (faultCountsTowardHalt(fault)) consecutiveFailures += 1;
+      quotaState = quotaStateForFault(fault);
+      log(formatRunnerFault(fault));
+    } finally {
+      activeAbort = null;
+      sessionsToday = providerSessionsToday();
     }
-    if (directive?.directive === "stop") await haltLoudly(`server: ${directive.reason}`);
-
-    // Adopt a server-authored wake cadence (campaign.agentIntervalMinutes set via
-    // update_campaign / the dashboard) — persisted so restarts keep it. Never let
-    // an already-scheduled far-away wake outlive a shortened cadence.
-    const pushed = pushedCadence(directive);
-    if (pushed !== undefined && pushed !== cfg.intervalMinutes) {
-      const next = pushed;
-      log(`server set wake cadence: every ${next} min (was ${cfg.intervalMinutes}) — adopting`);
-      cfg = { ...cfg, intervalMinutes: next };
-      try {
-        saveConfig(cfg);
-      } catch (e) {
-        log(`could not persist cadence (non-fatal): ${(e as Error).message}`);
-      }
-      nextCycleAt = Math.min(nextCycleAt, Math.round(Date.now() + next * 60_000));
+    if (stopping) continue;
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      await halt(`${MAX_CONSECUTIVE_FAILURES} consecutive contract/execution failures`);
     }
-
-    const idleReason = paused
-      ? `paused locally${paused.until ? ` until ${new Date(paused.until).toLocaleString()}` : ""} — resume with: engager-agent resume`
-      : directive?.directive === "idle"
-        ? `server: ${directive.reason}`
-        : sessionsToday >= cfg.dailySessionCap
-          ? `daily session cap reached (${cfg.dailySessionCap}) — resets at midnight`
-          : null;
-
-    // 2. Drafting cycle, when due and allowed.
-    if (!idleReason && Date.now() >= nextCycleAt) {
-      put("session");
-      try {
-        // The full server work order when the heartbeat carried one (draft or
-        // rank; an explicit commentsToDraft 0 = window already filled); absent =
-        // old server → the cycle falls back to local computeNeed sizing.
-        const serverOrder = directive?.workOrder ?? undefined;
-        const outcome = await runCycle(cfg, serverOrder ? { serverOrder } : {});
-        lastCycle = { at: Date.now(), ran: outcome.ran, ok: outcome.ok, note: outcome.note };
-        if (outcome.costUsd != null) lastCostUsd = outcome.costUsd;
-        if (outcome.tokens) lastTokens = outcome.tokens;
-        if (outcome.fatal) await haltLoudly(outcome.note);
-        if (outcome.ran) sessionsToday += 1;
-        if (!outcome.ok) {
-          consecutiveFailures += 1;
-          log(`cycle FAILED (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}): ${outcome.note}`);
-        } else {
-          consecutiveFailures = 0;
-          log(`cycle ok: ${outcome.note}`);
-        }
-      } catch (e) {
-        consecutiveFailures += 1;
-        lastCycle = { at: Date.now(), ran: false, ok: false, note: (e as Error).message };
-        log(
-          `cycle ERROR (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}): ${(e as Error).message}`,
-        );
-      }
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        await haltLoudly(`${MAX_CONSECUTIVE_FAILURES} consecutive failed cycles`);
-      }
-      nextCycleAt = Date.now() + nextWakeDelayMs(cfg.intervalMinutes);
-      log(`next drafting cycle ~${Math.round((nextCycleAt - Date.now()) / 60_000)} min`);
-    } else if (idleReason) {
-      log(`idle: ${idleReason}`);
-    }
-
-    const state: RunnerState = paused
+    const state: RunnerState = readPause()
       ? "paused-local"
-      : directive?.directive === "idle"
-        ? "idle-remote"
-        : "sleeping";
-    put(state, idleReason ?? undefined, Math.min(nextCycleAt, Date.now() + CONTROL_POLL_MS));
-    await sleep(controlTickDelayMs());
+      : lastCycle?.errorCode === "CONTRACT_UPGRADE_REQUIRED"
+        ? "upgrade-required"
+        : lastCycle?.errorCode === "ENGINE_QUOTA" || lastCycle?.errorCode === "ENGINE_OVERLOADED"
+          ? "quota-blocked"
+          : lastCycle?.ok
+            ? "sleeping"
+            : "idle-remote";
+    put(state, lastCycle?.ok ? undefined : lastCycle?.note, nextPollAt);
+    await sleep(Math.max(1_000, nextPollAt - Date.now()));
   }
 }
 
-// Wakeable sleep so a shutdown signal doesn't wait out a 5-minute tick.
+export function countsTowardHalt(code?: string): boolean {
+  return new Set([
+    "INTERNAL_ERROR",
+    "VALIDATION_REJECTED",
+    "ENGINE_OUTPUT_INVALID",
+    "ENGINE_SANDBOX_DENIED",
+    "CLOCK_SKEW",
+  ]).has(code ?? "");
+}
+
+const STRUCTURAL_DISCARDED_FAILURES = new Set([
+  "invalid_submission",
+  "wrong_lane",
+  "item_out_of_scope",
+  "idempotency_conflict",
+]);
+
+/** Journal replay safety and the local failure circuit are independent. A
+ * structurally invalid request must be discarded, but repeatedly producing it
+ * still halts before consuming the user's provider allowance indefinitely. */
+export function faultCountsTowardHalt(
+  fault: Pick<RunnerFault, "code" | "discardJournal" | "remoteCode">,
+): boolean {
+  if (!countsTowardHalt(fault.code)) return false;
+  return !fault.discardJournal || STRUCTURAL_DISCARDED_FAILURES.has(fault.remoteCode ?? "");
+}
+
+export function quotaStateForFault(fault: RunnerFault): Record<string, unknown> {
+  if (fault.code === "ENGINE_QUOTA") {
+    return quota("exhausted", "engine_quota", Date.now() + 60 * 60_000);
+  }
+  if (fault.code === "ENGINE_OVERLOADED") {
+    return quota("unavailable", "engine_overloaded", Date.now() + 10 * 60_000);
+  }
+  if (fault.code === "ENGINE_NOT_FOUND" || fault.code === "ENGINE_AUTH_REQUIRED") {
+    return quota("unavailable", fault.code.toLowerCase());
+  }
+  if (fault.code.startsWith("ENGINE_")) return quota("error", fault.code.toLowerCase());
+  return quota("error", fault.code.toLowerCase());
+}
+
+export function cycleInfoFromOutcome(outcome: ExecutionOutcome, at = Date.now()): CycleInfo {
+  return {
+    at,
+    ran: outcome.ran,
+    ok: outcome.ok,
+    note: sanitizeTerminalText(outcome.note).slice(0, 400),
+    ...(outcome.errorCode ? { errorCode: outcome.errorCode } : {}),
+    ...(outcome.workOrderId ? { workOrderId: outcome.workOrderId } : {}),
+    ...(outcome.lane ? { lane: outcome.lane } : {}),
+    ...(outcome.completion
+      ? {
+          receipt: {
+            status: outcome.completion.status,
+            ...outcome.completion.result,
+          },
+        }
+      : {}),
+  };
+}
+
+function activeQuotaBlock(value: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (!value || typeof value.resetsAt !== "number" || value.resetsAt <= Date.now()) return null;
+  if (value.reasonCode !== "engine_quota" && value.reasonCode !== "engine_overloaded") return null;
+  return value;
+}
+
 let wakeFn: (() => void) | null = null;
 function wake(): void {
   wakeFn?.();
 }
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       wakeFn = null;
       resolve();
     }, ms);
     wakeFn = () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       wakeFn = null;
       resolve();
     };

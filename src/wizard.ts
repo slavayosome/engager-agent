@@ -1,370 +1,580 @@
-import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import {
   CONFIG_DEFAULTS,
   createRunnerId,
+  engineConfigDirFromEnvironment,
+  engineConfigEnvironmentName,
+  isSafeEngineConfigDir,
+  isSafeMcpUrl,
   isValidRunnerId,
+  loadConfig,
   saveConfig,
   savePartialConfig,
   type AgentConfig,
+  type PendingDeviceAck,
 } from "./config.js";
 import { describeSource, detectEndpoints, type DetectedEndpoint } from "./detect.js";
-import { openBrowser, pollForKey, startDeviceFlow } from "./deviceauth.js";
-import { runCycle } from "./loop.js";
+import {
+  acknowledgeDeviceGrant,
+  isValidSetupProofOrganizationId,
+  openBrowser,
+  pollForKey,
+  startDeviceFlow,
+  type DeviceApprovedGrant,
+  type DeviceStart,
+} from "./deviceauth.js";
+import { engineFor } from "./engines/index.js";
+import type { EngineDetection, EngineName } from "./engine.js";
+import { asRunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
+import type { ExecutionOutcome } from "./executor.js";
+import { runControlCycle } from "./loop.js";
+import { prepareSetupJournal } from "./journal.js";
+import { acquireRunnerLock } from "./lock.js";
 import { EngagerMcp } from "./mcp.js";
 import { installService } from "./service.js";
-import { skillsRoot, syncSkill } from "./skills.js";
+import { AGENT_VERSION } from "./version.js";
+import { providerSessionsToday } from "./session-usage.js";
 
-/**
- * First-run setup: preflight (claude CLI is a hard requirement) → pick a
- * detected endpoint (Claude Desktop/Code configs, local dev server, cloud
- * default — manual URL as the escape hatch) → connect → model → skill install
- * → campaign pick → save → prove the whole chain with a batch-size-1 dry cycle
- * before arming the schedule. Every step verifies live; nothing is taken on
- * faith.
- *
- * Returns null when setup finished usefully but incompletely (dedicated runner
- * connected and its batch skill installed, but no agent-led campaign exists).
- * Interactive Claude/Desktop access is a separate credential and setup path.
- */
-export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentConfig | null> {
-  p.intro("engager-agent — autonomous drafting runner");
-
-  // 0. Preflight — without the claude CLI nothing downstream can work, so say
-  // so BEFORE asking the user for anything.
-  const claude = spawnSync("claude", ["--version"], { encoding: "utf8" });
-  if (claude.status !== 0) {
+export async function runWizard(
+  existing?: Partial<AgentConfig> & { pendingDeviceAck?: PendingDeviceAck },
+  options: {
+    reauthorize?: boolean;
+    setupProofOrganizationId?: string;
+  } = {},
+): Promise<AgentConfig | null> {
+  p.intro("engager-agent setup — private Claude/Codex executor");
+  if (process.platform === "win32") {
     p.log.error(
-      "engager-agent drives headless Claude Code sessions — the `claude` CLI is required and was not found on your PATH.\n" +
-        "Install it, then re-run this wizard:\n" +
-        "  npm install -g @anthropic-ai/claude-code   (or see https://claude.com/claude-code)",
+      "Windows setup is disabled in 0.9: private credential ACLs and descendant-process termination are not yet certified.",
     );
-    p.outro("Setup cannot continue without Claude Code.");
-    process.exit(1);
+    p.outro("No Engager credential was requested or stored. Use macOS or Linux for this release.");
+    return null;
   }
-  p.log.info(`Claude Code ${claude.stdout.trim()} detected — sessions run on your Claude plan.`);
+  if (
+    options.setupProofOrganizationId !== undefined &&
+    !isValidSetupProofOrganizationId(options.setupProofOrganizationId)
+  ) {
+    p.log.error("The setup-proof project id is not a valid UUID.");
+    p.outro("No Engager credential was requested or stored.");
+    return null;
+  }
+  if (existing?.pendingDeviceAck) {
+    const pending = existing.pendingDeviceAck;
+    if (!existing.mcpUrl || !existing.apiKey) {
+      const { pendingDeviceAck: _pending, apiKey: _key, ...rest } = existing;
+      savePartialConfig(rest);
+      existing = rest;
+      p.log.warn("Discarded an incomplete device-delivery record that carried no persisted key.");
+    } else {
+      const recovery = p.spinner();
+      recovery.start("Recovering the persisted runner-key delivery ACK…");
+      let status: "acknowledged" | "expired" | "not_found";
+      try {
+        status = await acknowledgeDeviceGrant(existing.mcpUrl, pending);
+      } catch (error) {
+        recovery.stop("Runner-key delivery ACK is still pending.");
+        p.log.error(error instanceof Error ? error.message : String(error));
+        p.outro("The temporary key and ACK token remain private on disk. Rerun setup when the endpoint is reachable.");
+        return null;
+      }
+      if (status === "acknowledged") {
+        const { pendingDeviceAck: _pending, ...finalized } = existing;
+        savePartialConfig(finalized);
+        const loaded = loadConfig();
+        if (!loaded) {
+          savePartialConfig(existing);
+          recovery.stop("ACK succeeded, but the saved runner configuration is incomplete.");
+          p.outro("Repair the private setup state and rerun setup; the ACK is idempotent.");
+          return null;
+        }
+        existing = loaded;
+        recovery.stop("Recovered and acknowledged the persisted runner credential.");
+      } else {
+        const { pendingDeviceAck: _pending, apiKey: _key, ...rest } = existing;
+        savePartialConfig(rest);
+        existing = rest;
+        recovery.stop("The temporary key delivery expired before ACK; requesting a fresh code.");
+      }
+    }
+  }
+  const { engineConfigDirs, detections } = await detectSetupEngines(existing);
+  const choices = detections
+    .filter((detection) => detection.installed && detection.supported)
+    .map((detection) => ({
+      value: detection.name,
+      label: `${detection.name} ${detection.version ?? ""} — ${
+        detection.authenticated === true
+          ? "authenticated"
+          : detection.authenticated === false
+            ? "authentication required"
+            : detection.detail ?? "auth status unknown"
+      }`,
+    }));
+  if (choices.length === 0) {
+    p.log.error("No supported local engine was found. Install Claude Code or Codex CLI, authenticate it, then rerun setup.");
+    p.outro("Setup stopped before requesting any Engager credential.");
+    return null;
+  }
+  const engine = must(
+    await p.select({
+      message: "Which subscription-backed engine should execute frozen work orders?",
+      options: choices,
+      initialValue:
+        choices.some((choice) => choice.value === existing?.engine)
+          ? existing!.engine
+          : choices[0]!.value,
+    }),
+  ) as "claude" | "codex";
+  const selected = detections.find((detection) => detection.name === engine)!;
+  if (!selected.supported || selected.authenticated !== true) {
+    p.log.error(
+      selected.detail ??
+        `${engine} is installed but not authenticated. Authenticate it, then run \`engager-agent doctor\`.`,
+    );
+    p.outro("Setup did not request a runner credential.");
+    return null;
+  }
 
-  // The device grant is bound to this stable runner identity. Legacy configs
-  // without a runner credential profile intentionally reauthorize below.
   const runnerId = isValidRunnerId(existing?.runnerId) ? existing.runnerId : createRunnerId();
-
-  // 1. Endpoint — offer what the machine already knows before asking for URLs.
-  const sDetect = p.spinner();
-  sDetect.start("Looking for existing Engager connections…");
-  const detected = await detectEndpoints(existing);
-  sDetect.stop(
-    detected.some((d) => d.source !== "cloud")
-      ? "Found existing Engager connection(s) on this machine."
-      : "No existing connections found — Engager Cloud offered as the default.",
+  const setupLock = acquireRunnerLock(runnerId);
+  try {
+    const recovery = prepareSetupJournal();
+    if (recovery.state === "blocked") {
+      p.log.error(
+        recovery.reason === "invalid"
+          ? "Setup cannot prove whether active-work.json still carries live lease authority because it is corrupt, unsafe, or was claimed under an untrusted clock."
+          : "Setup cannot replace the endpoint, credential, or engine while a leased recovery journal is still live.",
+      );
+      p.outro(
+        recovery.reason === "active"
+          ? `Restore the existing credential and run once, or wait until ${new Date(recovery.terminalAt!).toISOString()} then rerun setup --reauthorize.`
+          : "Run `engager-agent doctor`; correct clock/permissions, preserve the journal, and reconcile it with the original credential.",
+      );
+      return null;
+    }
+    if (recovery.state === "quarantined") {
+      p.log.warn(
+        "The prior work order is past its hard expiry plus clock-skew margin; its private journal was quarantined before credential rotation.",
+      );
+    }
+  const replacingCredential = Boolean(
+    existing?.apiKey &&
+      (options.reauthorize || options.setupProofOrganizationId),
   );
+  if (replacingCredential && existing?.apiKey) {
+    p.note(
+      options.setupProofOrganizationId
+        ? "This protected setup needs a project- and purpose-bound owner approval. Revoke the current general runner credential in Engager Settings before continuing; setup cannot upgrade or revoke it with runner:execute authority."
+        : "Engager permits one active runner credential per runner identity. Revoke the old credential in Engager Settings before continuing; setup cannot revoke it with runner:execute authority.",
+      "Credential rotation",
+    );
+    const revoked = must(
+      await p.confirm({
+        message: "Have you revoked the old runner credential in Engager Settings?",
+        initialValue: false,
+      }),
+    );
+    if (!revoked) {
+      p.outro(
+        options.setupProofOrganizationId
+          ? "No credential was changed. Revoke the old key, then rerun the protected setup command."
+          : "No credential was changed. Revoke the old key, then rerun setup --reauthorize.",
+      );
+      return null;
+    }
+  }
+  const spinner = p.spinner();
+  spinner.start("Looking for Engager endpoints…");
+  const detected = await detectEndpoints(existing);
+  spinner.stop("Endpoint discovery complete.");
 
   let mcpUrl = "";
   let apiKey = "";
-  let mcp: EngagerMcp | null = null;
-  let campaigns: Awaited<ReturnType<EngagerMcp["listCampaigns"]>> = [];
-  /** Keys that already failed a live connect — never silently reuse them again. */
-  const burntKeys = new Set<string>();
-  while (!mcp) {
-    const MANUAL = -1;
+  let connected = false;
+  let pendingGrant: DeviceApprovedGrant | null = null;
+  const rejectedKeys = new Set<string>();
+  while (!connected) {
+    const manual = -1;
     const choice = must(
       await p.select({
         message: "Which Engager should this runner connect to?",
         options: [
-          ...detected.map((d, i) => ({
-            value: i,
-            label: `${d.url} — ${describeSource(d)}${d.apiKey && !burntKeys.has(d.apiKey) ? " (API key found, no paste needed)" : ""}`,
+          ...detected.map((endpoint, index) => ({
+            value: index,
+            label: `${endpoint.url} — ${describeSource(endpoint)}${
+              endpoint.apiKey &&
+              !replacingCredential &&
+              !options.setupProofOrganizationId &&
+              !rejectedKeys.has(endpoint.apiKey)
+                ? " (dedicated key found)"
+                : ""
+            }`,
           })),
-          { value: MANUAL, label: "Other — enter a URL manually" },
+          { value: manual, label: "Other — enter a URL" },
         ],
       }),
     ) as number;
-
-    let picked: DetectedEndpoint | null = choice === MANUAL ? null : (detected[choice] ?? null);
-    if (!picked) {
+    let endpoint: DetectedEndpoint | null = choice === manual ? null : (detected[choice] ?? null);
+    if (!endpoint) {
       const url = must(
         await p.text({
           message: "Engager MCP endpoint",
-          placeholder: "https://<your-engager-host>/mcp",
+          placeholder: "https://your-engager.example/mcp",
           initialValue: existing?.mcpUrl ?? "",
-          validate: (v) => {
+          validate: (value) => {
             try {
-              new URL(v);
-              return undefined;
+              new URL(value);
+              return isSafeMcpUrl(value)
+                ? undefined
+                : "Use HTTPS; HTTP is allowed only for localhost development.";
             } catch {
-              return "enter a full URL, e.g. https://host/mcp";
+              return "Enter a full MCP URL.";
             }
           },
         }),
       );
-      picked = { url, source: "cloud" };
+      endpoint = { url, source: "cloud" };
     }
-    mcpUrl = picked.url;
-    apiKey =
-      picked.apiKey && !burntKeys.has(picked.apiKey)
-        ? picked.apiKey
-        : await acquireKey(mcpUrl, runnerId);
-
-    const s = p.spinner();
-    s.start("Connecting…");
-    const candidate = new EngagerMcp(mcpUrl, apiKey);
-    try {
-      await candidate.connect();
-      campaigns = await candidate.listCampaigns();
-      s.stop(`Connected — ${campaigns.length} campaign(s) visible.`);
-      mcp = candidate;
-    } catch (e) {
-      const msg = (e as Error).message;
-      const badKey = /401|unauthorized|dedicated Engager runner profile|tool surface mismatch/i.test(
-        msg,
-      );
-      if (badKey) burntKeys.add(apiKey); // a reused key that failed → ask next round
-      s.stop(
-        badKey
-          ? `Rejected: the API key is invalid for this endpoint${picked.apiKey === apiKey ? " (the stored one may be stale — enter a fresh key)" : ""}.`
-          : /fetch|ECONN|ENOTFOUND|404/i.test(msg)
-            ? "Could not reach the endpoint — check the URL (it should end in /mcp)."
-            : `Failed: ${msg}`,
-      );
-    }
-  }
-
-  try {
-    // The runner credential is deliberately NOT registered into Claude Code or
-    // Desktop. Headless sessions receive it only through a 0600 temporary MCP
-    // config; interactive clients require their own interactive credential.
-    const model = must(
-      await p.select({
-        message: "Drafting model for the hourly sessions",
-        initialValue: existing?.model ?? CONFIG_DEFAULTS.model,
-        options: [
-          { value: "sonnet", label: "sonnet — recommended (quality/cost sweet spot)" },
-          { value: "opus", label: "opus — premium quality, slower + pricier" },
-          { value: "haiku", label: "haiku — cheapest; expect weaker drafts" },
-        ],
-      }),
-    ) as string;
-
-    // 3. Skill install — only the runner's sha256-verified batch workflow.
-    const s2 = p.spinner();
-    s2.start("Installing the Engager runner skill…");
-    const manifests = await mcp.skillManifests();
-    const installed: string[] = [];
-    for (const m of manifests.filter((manifest) => manifest.name === "engager-batch")) {
-      try {
-        await syncSkill(mcp, m.name, skillsRoot("claude"));
-        installed.push(`${m.name} ${m.version}`);
-      } catch (e) {
-        throw new Error(`skill ${m.name}: install failed (${(e as Error).message})`);
-      }
-    }
-    if (installed.length === 0) throw new Error("server does not provide engager-batch");
-    s2.stop(`Runner skill in place: ${installed.join(", ")}.`);
-
-    // 4. Campaign pick — agent-led only (this runner never drives server-led).
-    // Zero campaigns is NOT a failure: everything useful is already done
-    // (runner connected, skill installed) — save it and hand off to the
-    // dashboard or a separately authorized interactive agent.
-    const agentLed = campaigns.filter((c) => c.draftingMode === "agent" && c.status === "active");
-    if (agentLed.length === 0) {
-      savePartialConfig({
-        ...existing,
+    mcpUrl = endpoint.url;
+    pendingGrant = null;
+    if (
+      endpoint.apiKey &&
+      !replacingCredential &&
+      !options.setupProofOrganizationId &&
+      !rejectedKeys.has(endpoint.apiKey)
+    ) {
+      apiKey = endpoint.apiKey;
+    } else {
+      pendingGrant = await acquireKey(
         mcpUrl,
-        apiKey,
-        credentialProfile: "runner",
         runnerId,
-        cli: "claude",
-        model,
-      });
-      p.log.info("Connection saved — the one missing piece is an active agent-led campaign.");
-      p.note(
-        "Create an active agent-led campaign:\n" +
-          "  · use the Engager dashboard, or\n" +
-          "  · use Claude/Desktop with a separate interactive-agent key\n" +
-          "then re-run `engager-agent` — it resumes right here.",
-        "One step left",
+        options.setupProofOrganizationId,
       );
-      p.outro("Setup paused, nothing lost — create a campaign, then re-run engager-agent.");
-      return null;
+      apiKey = pendingGrant.apiKey;
     }
-    const lines = await Promise.all(
-      agentLed.map(async (c) => {
-        const q = await mcp!.campaignQueue(c.id);
-        return {
-          value: c.id,
-          label: `${c.name} — runway ${q.runwayDays}d, recommended ${q.recommendedBatchSize}, pool ${q.candidatePool.size}/${q.candidatePool.target}`,
-        };
-      }),
-    );
-    const campaignId = must(
-      await p.select({ message: "Which campaign should this runner drive?", options: lines }),
-    ) as number;
-
-    // 4b. Wake cadence — how often the runner wakes and how far ahead it drafts
-    // (one cadence-window of work per wake). Server-authored from then on: the
-    // campaign setting is pushed back in every heartbeat, so it stays editable
-    // from the dashboard / update_campaign without re-running this wizard.
-    const intervalMinutes = Number(
-      must(
-        await p.select({
-          message: "Wake cadence — how often should the runner wake and draft?",
-          initialValue: String(existing?.intervalMinutes ?? CONFIG_DEFAULTS.intervalMinutes),
-          options: [
-            { value: "60", label: "every hour — hourly micro-batches (recommended)" },
-            { value: "120", label: "every 2 hours" },
-            { value: "180", label: "every 3 hours" },
-            { value: "240", label: "every 4 hours" },
-            { value: "360", label: "every 6 hours" },
-          ],
-        }),
-      ) as string,
-    );
-    let cfg: AgentConfig = {
-      ...CONFIG_DEFAULTS,
-      ...existing,
+    // Persist a newly minted token before the first post-authorization network
+    // check. A transient outage must not lose the only plaintext copy or force
+    // a conflicting second credential for the same runner identity.
+    const provisionalConfig: AgentConfig = {
+      configVersion: 2,
       mcpUrl,
       apiKey,
       credentialProfile: "runner",
       runnerId,
-      cli: "claude",
-      model,
-      campaignId,
-      intervalMinutes,
+      engine,
+      enginePath: selected.executablePath!,
+      ...(engineConfigDirs[engine]
+        ? { engineConfigDir: engineConfigDirs[engine] }
+        : {}),
+      ...(existing?.model ? { model: existing.model } : engine === "claude" ? { model: CONFIG_DEFAULTS.model } : {}),
+      maxTurns: CONFIG_DEFAULTS.maxTurns,
+      dailySessionCap: existing?.dailySessionCap ?? CONFIG_DEFAULTS.dailySessionCap,
+      sessionTimeoutMinutes:
+        existing?.sessionTimeoutMinutes ?? CONFIG_DEFAULTS.sessionTimeoutMinutes,
+      ...(existing?.legacy ? { legacy: existing.legacy } : {}),
     };
-    saveConfig(cfg);
-    p.log.success("Saved ~/.engager/agent.json (0600).");
+    if (pendingGrant) {
+      const pendingDeviceAck: PendingDeviceAck = {
+        deviceCode: pendingGrant.deviceCode,
+        ackToken: pendingGrant.ackToken,
+        deliveryExpiresAt: pendingGrant.deliveryExpiresAt,
+      };
+      // The temporary key and ACK authority are committed in one private file.
+      // A crash before ACK makes loadConfig fail closed and setup replays ACK.
+      savePartialConfig({ ...provisionalConfig, pendingDeviceAck });
+      let ackStatus: "acknowledged" | "expired" | "not_found";
+      try {
+        ackStatus = await acknowledgeDeviceGrant(mcpUrl, pendingGrant);
+      } catch (error) {
+        p.outro(
+          `Credential persisted but ACK is pending: ${error instanceof Error ? error.message : String(error)}. Rerun setup to recover it.`,
+        );
+        return null;
+      }
+      if (ackStatus !== "acknowledged") {
+        const { apiKey: _key, ...withoutKey } = provisionalConfig;
+        savePartialConfig(withoutKey);
+        p.outro(`Credential delivery ${ackStatus}; rerun setup to request a fresh code.`);
+        return null;
+      }
+      pendingGrant = null;
+    }
+    saveConfig(provisionalConfig);
+    for (;;) {
+      const check = p.spinner();
+      check.start("Verifying the dedicated runner credential…");
+      const mcp = new EngagerMcp(mcpUrl, apiKey, AGENT_VERSION);
+      try {
+        const surface = await mcp.connect();
+        check.stop(
+          surface === "v2"
+            ? "Connected to the leased v2.1 runner surface."
+            : "Connected to the version-negotiation surface.",
+        );
+        connected = true;
+        break;
+      } catch (error) {
+        const fault = asRunnerFault(error);
+        check.stop(`Connection check failed: ${fault.message}`);
+        if (fault.code === "AUTH_REVOKED") {
+          rejectedKeys.add(apiKey);
+          break;
+        }
+        p.log.warn("The dedicated credential was saved safely; it will not be replaced for a network outage.");
+        const retry = must(
+          await p.confirm({
+            message: "Retry the same credential now?",
+            initialValue: true,
+          }),
+        );
+        if (!retry) {
+          p.outro("Credential preserved. Rerun setup when the endpoint is reachable.");
+          return null;
+        }
+      } finally {
+        await mcp.close();
+      }
+    }
+  }
 
-    // 5. Dry-run cycle (batch size 1) — prove the whole chain before walking away.
-    const dryRun = must(
+  const model = await selectModel(engine, existing?.model);
+  const config: AgentConfig = {
+    configVersion: 2,
+    mcpUrl,
+    apiKey,
+    credentialProfile: "runner",
+    runnerId,
+    engine,
+    enginePath: selected.executablePath!,
+    ...(engineConfigDirs[engine]
+      ? { engineConfigDir: engineConfigDirs[engine] }
+      : {}),
+    ...(model ? { model } : {}),
+    maxTurns: CONFIG_DEFAULTS.maxTurns,
+    dailySessionCap: existing?.dailySessionCap ?? CONFIG_DEFAULTS.dailySessionCap,
+    sessionTimeoutMinutes:
+      existing?.sessionTimeoutMinutes ?? CONFIG_DEFAULTS.sessionTimeoutMinutes,
+    ...(existing?.legacy ? { legacy: existing.legacy } : {}),
+  };
+  saveConfig(config);
+  p.log.success("Saved organization-level runner configuration at ~/.engager/agent.json (0600).");
+  p.note(
+    "The model receives frozen context only. It gets no Engager key, MCP, shell, files, browser, web search, plugins, or lease token. Engager does not meter agent drafting; your Claude/Codex provider limits and charges still apply.",
+    "Execution boundary",
+  );
+
+  const prove = must(
+    await p.confirm({
+      message: "Claim and execute at most one server-authored proof work order now?",
+      initialValue: true,
+    }),
+  );
+  let proofAccepted = false;
+  if (prove) {
+    try {
+      const result = await runControlCycle(config, AGENT_VERSION, {
+        state: "preflight",
+        consecutiveFailures: 0,
+        sessionsToday: providerSessionsToday(),
+      }, { claimPurpose: "setup_proof" });
+      proofAccepted = isAcceptedSetupProof(result.outcome);
+      if (proofAccepted) p.log.success(`Proof accepted — ${result.outcome.note}`);
+      else p.log.warn(`No accepted proof yet — ${result.outcome.note}`);
+    } catch (error) {
+      p.log.error(formatRunnerFault(error));
+    }
+  }
+
+  if (proofAccepted && process.platform === "darwin") {
+    const install = must(
       await p.confirm({
-        message: "Run one batch-size-1 session now to prove the chain end-to-end?",
+        message: "Install the verified versioned runner as a background service?",
         initialValue: true,
       }),
     );
-    if (dryRun) {
-      const outcome = await runCycle(cfg, { batchOverride: 1 });
-      if (outcome.ok) p.log.success(`Dry run OK — ${outcome.note}`);
-      else {
-        // Do NOT arm anything on a failed proof — config is saved, the user
-        // investigates and starts explicitly. (Returning null stops the CLI
-        // from falling through into the loop.)
-        p.log.warn(`Dry run FAILED — ${outcome.note}.`);
-        p.note(
-          [
-            "Your setup IS saved — only the always-on loop wasn't armed.",
-            "",
-            "  1. Retry the proof:      engager-agent --once --batch 1",
-            "  2. Check runner state:   engager-agent status",
-            `  3. Read the full log:    ~/.engager/logs/`,
-            '  4. Server-side view:     ask your Claude "how\'s engager doing?"',
-            "",
-            "When a run verifies OK:",
-            "  · start the loop:        engager-agent",
-            "  · run it always-on:      engager-agent service install",
-          ].join("\n"),
-          "Not armed yet — next steps",
-        );
-        p.outro("Setup saved. Re-prove the chain, then arm the loop.");
-        return null;
-      }
+    if (install) {
+      const result = installService(AGENT_VERSION);
+      result.ok ? p.log.success(result.note) : p.log.error(result.note);
     }
-
-    // 6. Autostart (opt-in, only offered when the chain is proven). Deliberate
-    // halts survive service mode: launchd restarts crashes, never a halt.
-    let serviceInstalled = false;
-    if (process.platform === "darwin") {
-      const auto = must(
-        await p.confirm({
-          message: "Run engager-agent automatically at login (launchd service, always on)?",
-          initialValue: true,
-        }),
-      );
-      if (auto) {
-        const r = installService();
-        if (r.ok) {
-          serviceInstalled = true;
-          p.log.success(r.note);
-        } else {
-          p.log.error(r.note);
-        }
-      }
-    }
-
-    // The card shows THIS campaign's real state, not generic prose — fetch a
-    // fresh queue snapshot (the dry run just changed it). Best-effort: if the
-    // read fails we fall back to config-only lines.
-    const picked = agentLed.find((c) => c.id === campaignId);
-    let queueLine: string | null = null;
-    let modeLine: string | null = null;
-    try {
-      const q = await mcp.campaignQueue(campaignId);
-      queueLine = `Queue:     ${q.pendingScheduled} scheduled · runway ${q.runwayDays} day(s) · pool ${q.candidatePool.size}/${q.candidatePool.target} candidates`;
-      modeLine =
-        q.mode === "auto"
-          ? "Approvals: AUTO — submitted drafts schedule themselves (paced by your caps)"
-          : "Approvals: MANUAL — drafts wait for your review (dashboard or an engager-batch session)";
-      if (q.dailyCapacity) {
-        queueLine += ` · up to ${q.dailyCapacity} comments/day`;
-      }
-    } catch {
-      /* card degrades gracefully */
-    }
+  } else if (!proofAccepted) {
     p.note(
-      [
-        `Campaign:  ${picked?.name ?? `#${campaignId}`} (batch size set by the server each wake)`,
-        ...(modeLine ? [modeLine] : []),
-        ...(queueLine ? [queueLine] : []),
-        `Drafting:  every ~${cfg.intervalMinutes} min when there's headroom, ≤${cfg.dailySessionCap} sessions/day, model ${cfg.model}`,
-        'Check:     engager-agent status    · or ask your Claude "how\'s my engager runner?"',
-        "Control:   engager-agent pause --for 2h · resume · stop",
-        `Logs:      ~/.engager/logs/`,
-      ].join("\n"),
-      "What happens now",
+      "Configuration is saved, but the background service was not armed without an accepted proof receipt.\nRun `engager-agent doctor`, then `engager-agent run --once`.",
+      "Not armed yet",
     );
-    p.outro(
-      serviceInstalled
-        ? "Setup complete — the service is running (starts at login, survives crashes)."
-        : "Setup complete — starting the loop in this terminal now (Ctrl-C stops it; restart later with: engager-agent).",
-    );
-    return cfg;
+  }
+  p.outro("Setup complete. Bare `engager-agent` shows status; it never starts work.");
+  return config;
   } finally {
-    await mcp.close();
+    setupLock.release();
   }
 }
 
-/**
- * Get a dedicated runner credential through the server-selected device profile.
- * There is deliberately no pasted/general-key fallback: an old server cannot
- * prove it issued a least-privilege unattended credential, so setup fails closed.
- */
-async function acquireKey(mcpUrl: string, runnerId: string): Promise<string> {
-  const s = p.spinner();
-  s.start("Requesting a least-privilege runner sign-in code…");
-  const start = await startDeviceFlow(mcpUrl, runnerId);
-  if (!start) {
-    s.stop("This server cannot issue dedicated runner credentials.");
-    throw new Error("upgrade the Engager server, then run setup again");
+type SetupEngineConfigResolution = {
+  configDir?: string;
+  error?: string;
+};
+
+/** Resolve and probe each provider independently. A malformed override for an
+ * unselected provider must not prevent setup with a healthy provider. */
+export async function detectSetupEngines(
+  existing?: Pick<Partial<AgentConfig>, "engine" | "engineConfigDir">,
+  source: NodeJS.ProcessEnv = process.env,
+  factory: typeof engineFor = engineFor,
+): Promise<{
+  engineConfigDirs: Partial<Record<EngineName, string>>;
+  detections: EngineDetection[];
+}> {
+  const claude = resolveSetupEngineConfigDir("claude", existing, source);
+  const codex = resolveSetupEngineConfigDir("codex", existing, source);
+  const engineConfigDirs: Partial<Record<EngineName, string>> = {
+    ...(claude.configDir ? { claude: claude.configDir } : {}),
+    ...(codex.configDir ? { codex: codex.configDir } : {}),
+  };
+  const detect = async (
+    engine: EngineName,
+    resolution: SetupEngineConfigResolution,
+  ): Promise<EngineDetection> => {
+    if (resolution.error) {
+      return {
+        name: engine,
+        installed: true,
+        supported: false,
+        authenticated: null,
+        detail: resolution.error,
+      };
+    }
+    try {
+      return await factory(engine, undefined, resolution.configDir).detect();
+    } catch (error) {
+      return {
+        name: engine,
+        installed: true,
+        supported: false,
+        authenticated: null,
+        detail: `${engine} probe failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  };
+  const detections = await Promise.all([
+    detect("claude", claude),
+    detect("codex", codex),
+  ]);
+  return { engineConfigDirs, detections };
+}
+
+function resolveSetupEngineConfigDir(
+  engine: EngineName,
+  existing: Pick<Partial<AgentConfig>, "engine" | "engineConfigDir"> | undefined,
+  source: NodeJS.ProcessEnv,
+): SetupEngineConfigResolution {
+  try {
+    const environmentConfigDir = engineConfigDirFromEnvironment(engine, source);
+    const persistedConfigDir =
+      existing?.engine === engine ? existing.engineConfigDir : undefined;
+    if (
+      environmentConfigDir === undefined &&
+      persistedConfigDir !== undefined &&
+      !isSafeEngineConfigDir(persistedConfigDir)
+    ) {
+      throw new Error(
+        `persisted ${engineConfigEnvironmentName(engine)} must be an absolute path no longer than 2000 characters`,
+      );
+    }
+    const configDir = environmentConfigDir ?? persistedConfigDir;
+    return configDir ? { configDir } : {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
   }
-  s.stop(`Your code: ${start.userCode}`);
-  p.note(
-    `Opening your browser. Confirm the code matches, then Approve:\n${start.verificationUrl}`,
-    `Code ${start.userCode}`,
+}
+
+export function isAcceptedSetupProof(outcome: ExecutionOutcome): boolean {
+  return (
+    outcome.ran &&
+    outcome.ok &&
+    outcome.workPurpose === "setup_proof" &&
+    outcome.completion?.status === "completed" &&
+    outcome.completion.result.unfinished === 0 &&
+    outcome.completion.result.failed === 0
   );
+}
+
+async function selectModel(engine: "claude" | "codex", existing?: string): Promise<string | undefined> {
+  if (engine === "codex") {
+    const useDefault = must(
+      await p.confirm({
+        message: "Use the Codex provider default model (recommended and upgrade-safe)?",
+        initialValue: existing == null,
+      }),
+    );
+    if (useDefault) return undefined;
+    const custom = must(
+      await p.text({
+        message: "Explicit Codex model ID",
+        initialValue: existing ?? "",
+        validate: (value) => (value.trim() ? undefined : "Enter a model ID or choose the provider default."),
+      }),
+    );
+    return custom.trim();
+  }
+  return must(
+    await p.select({
+      message: "Claude model",
+      initialValue: existing ?? CONFIG_DEFAULTS.model,
+      options: [
+        { value: "sonnet", label: "sonnet — recommended" },
+        { value: "opus", label: "opus — highest quality" },
+        { value: "haiku", label: "haiku — lowest allowance use" },
+      ],
+    }),
+  ) as string;
+}
+
+async function acquireKey(
+  mcpUrl: string,
+  runnerId: string,
+  setupProofOrganizationId?: string,
+): Promise<DeviceApprovedGrant> {
+  const spinner = p.spinner();
+  spinner.start("Requesting a least-privilege runner sign-in code…");
+  let start: DeviceStart;
+  try {
+    start = await startDeviceFlow(mcpUrl, runnerId, {
+      setupProofOrganizationId,
+    });
+  spinner.stop(`Code ${sanitizeTerminalText(start.userCode)}`);
+  } catch (error) {
+    spinner.stop("Runner sign-in could not start.");
+    throw new Error(
+      error instanceof Error && "code" in error
+        ? `${String(error.code)}: ${error.message}`
+        : error instanceof Error
+          ? error.message
+          : String(error),
+      { cause: error },
+    );
+  }
+  p.note(`Confirm this code in your browser, then approve runner:execute only:\n${start.verificationUrl}`);
   openBrowser(start.verificationUrl);
-  const s2 = p.spinner();
-  s2.start("Waiting for runner approval in the browser…");
+  const wait = p.spinner();
+  wait.start("Waiting for browser approval…");
   const result = await pollForKey(mcpUrl, start);
   if (result.outcome === "approved") {
-    s2.stop("Approved — dedicated runner credential received.");
-    return result.apiKey;
+    wait.stop("Dedicated runner credential delivered; persisting before ACK.");
+    return {
+      apiKey: result.apiKey,
+      deviceCode: result.deviceCode,
+      ackToken: result.ackToken,
+      deliveryExpiresAt: result.deliveryExpiresAt,
+    };
   }
-  s2.stop(`Browser sign-in didn't complete: ${result.note}.`);
+  wait.stop(`Authorization did not complete: ${result.note}`);
   throw new Error(`runner authorization failed: ${result.note}`);
 }
 
-function must<T>(v: T | symbol): T {
-  if (p.isCancel(v)) {
+function must<T>(value: T | symbol): T {
+  if (p.isCancel(value)) {
     p.cancel("Cancelled.");
     process.exit(1);
   }
-  return v as T;
+  return value as T;
 }

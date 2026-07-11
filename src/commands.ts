@@ -1,13 +1,10 @@
-import { loadConfig } from "./config.js";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { agentHome, configFileMode, loadConfig } from "./config.js";
+import { redact, sanitizeTerminalText } from "./errors.js";
 import { log } from "./log.js";
-import {
-  clearHalt,
-  clearPause,
-  parseDuration,
-  readHalt,
-  readPause,
-  writePause,
-} from "./markers.js";
+import { isLockOwnerLive, readRunnerLockOwner } from "./lock.js";
+import { clearHalt, clearPause, readHalt, readPause, writePause } from "./markers.js";
 import {
   installService,
   serviceState,
@@ -15,199 +12,264 @@ import {
   stopService,
   uninstallService,
 } from "./service.js";
-import { fmtTokens } from "./session.js";
-import { pidAlive, readStatus } from "./status.js";
+import { readStatus, writeStatus } from "./status.js";
 
-/**
- * The control-surface subcommands: status / pause / resume / stop / start /
- * service. All state they act on is on disk (markers, status.json, launchd),
- * so they work whether the loop runs foreground or as a service. The running
- * loop notices marker changes at its next control poll (≤5 min).
- */
-
-const fmtAge = (ts: number, now: number): string => {
-  const min = Math.round((now - ts) / 60_000);
-  return min < 1 ? "just now" : min < 60 ? `${min} min ago` : `${Math.round(min / 60)} h ago`;
+const fmtAge = (timestamp: number, now: number): string => {
+  const minutes = Math.round((now - timestamp) / 60_000);
+  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : `${Math.round(minutes / 60)} h ago`;
 };
 
 export function statusCommand(json: boolean): void {
   const now = Date.now();
-  const cfg = loadConfig();
-  const st = readStatus();
+  const config = loadConfig();
+  const status = readStatus();
   const halt = readHalt();
   const pause = readPause(now);
-  const svc = serviceState();
-  const alive = st != null && pidAlive(st.pid);
-  // A live loop refreshes status at least every control poll; a status file
-  // whose nextWakeAt is long gone while the pid is dead means "not running".
-  const stuck = alive && st?.nextWakeAt != null && now - st.nextWakeAt > 15 * 60_000;
-
+  const service = serviceState();
+  const owner = config ? readRunnerLockOwner(config.runnerId) : null;
+  const alive = status != null && owner?.pid === status.pid && isLockOwnerLive(owner);
   const verdict = halt
-    ? `HALTED — ${halt.reason} (resume with: engager-agent resume)`
-    : !cfg
-      ? "not configured — run: engager-agent"
-      : !alive
-        ? svc.installed
-          ? svc.loaded
-            ? "service loaded but no live runner status yet"
-            : "stopped (service installed but not running — engager-agent start)"
-          : "not running (start with: engager-agent, or install the service)"
-        : pause
-          ? `paused locally${pause.until ? ` until ${new Date(pause.until).toLocaleString()}` : ""}`
-          : stuck
-            ? `possibly stuck — pid ${st!.pid} alive but overslept its wake time`
-            : `running — ${st!.state}${st!.stateReason ? ` (${st!.stateReason})` : ""}`;
-
+    ? `HALTED — ${halt.reason}`
+    : !config
+      ? configFileMode() != null && configFileMode() !== 0o600
+        ? "configuration blocked — agent.json must be 0600"
+        : "not configured"
+      : alive
+        ? pause
+          ? "paused locally"
+          : `running — ${status!.state}`
+        : service.loaded
+          ? "service loaded; waiting for runner heartbeat"
+          : "not running";
+  const safeConfig = config
+    ? {
+        mcpUrl: config.mcpUrl,
+        runnerId: config.runnerId,
+        engine: config.engine,
+        model: config.model ?? null,
+        dailySessionCap: config.dailySessionCap,
+        legacyCompatibility: config.legacy != null,
+      }
+    : null;
   if (json) {
-    const safeCfg = cfg
-      ? {
-          mcpUrl: cfg.mcpUrl,
-          campaignId: cfg.campaignId,
-          model: cfg.model,
-          intervalMinutes: cfg.intervalMinutes,
-          dailySessionCap: cfg.dailySessionCap,
-          runnerId: cfg.runnerId,
-        }
-      : null;
     process.stdout.write(
-      JSON.stringify(
-        { now, verdict, alive, config: safeCfg, status: st, halt, pause, service: svc },
-        null,
-        2,
-      ) + "\n",
+      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service }, null, 2)}\n`,
     );
     return;
   }
-
-  const lines: string[] = [`engager-agent: ${verdict}`];
-  if (cfg) {
+  const lines = [`engager-agent: ${verdict}`];
+  if (config) {
     lines.push(
-      `  campaign ${cfg.campaignId} · model ${cfg.model} · drafting every ~${cfg.intervalMinutes} min`,
+      `  engine ${config.engine}${config.model ? ` (${config.model})` : " (provider default)"} · runner ${config.runnerId}`,
     );
   }
-  if (st) {
-    if (st.lastCycle) {
-      lines.push(
-        `  last cycle: ${st.lastCycle.ok ? "ok" : "FAILED"} ${fmtAge(st.lastCycle.at, now)} — ${st.lastCycle.note}`,
-      );
-    }
+  if (status) {
     lines.push(
-      `  sessions today: ${st.sessionsToday} · consecutive failures: ${st.consecutiveFailures}` +
-        (st.lastSessionTokens
-          ? ` · last session ${fmtTokens(st.lastSessionTokens)} tokens`
-          : ""),
+      `  protocol ${status.protocol ?? "not negotiated"} · sessions today ${status.sessionsToday}/${config?.dailySessionCap ?? "?"}`,
     );
-    if (alive && st.nextWakeAt) {
-      lines.push(`  next wake: ${new Date(st.nextWakeAt).toLocaleTimeString()}`);
+    if (status.lastCycle) {
+      const blocked =
+        status.lastCycle.errorCode === "ENGINE_QUOTA" ||
+        status.lastCycle.errorCode === "ENGINE_OVERLOADED" ||
+        status.lastCycle.errorCode === "CONTRACT_UPGRADE_REQUIRED";
+      lines.push(
+        `  last cycle ${status.lastCycle.ok ? "ok" : blocked ? "BLOCKED" : "FAILED"} ${fmtAge(status.lastCycle.at, now)} — ${status.lastCycle.note}`,
+      );
+      if (status.lastCycle.receipt) {
+        const receipt = status.lastCycle.receipt;
+        lines.push(
+          `  last receipt ${receipt.status} · accepted ${receipt.accepted} · existing ${receipt.alreadyExists} · rejected ${receipt.rejected} · failed ${receipt.failed} · unfinished ${receipt.unfinished}`,
+        );
+      }
     }
+    if (status.nextPollAt && alive) lines.push(`  next control poll ${new Date(status.nextPollAt).toLocaleTimeString()}`);
   }
   lines.push(
-    `  autostart: ${!svc.supported ? "unsupported (not macOS)" : svc.installed ? (svc.loaded ? `installed, loaded${svc.pid ? ` (pid ${svc.pid})` : ""}` : "installed, not running") : "not installed (engager-agent service install)"}`,
+    `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`,
   );
-  process.stdout.write(lines.join("\n") + "\n");
+  lines.push(
+    config ? "  next: engager-agent doctor" : "  next: engager-agent setup",
+  );
+  process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-export function pauseCommand(forText?: string): void {
+export function pauseCommand(duration?: string): void {
   let until: number | undefined;
-  if (forText) {
-    const ms = parseDuration(forText);
-    if (ms == null) {
-      log(`could not parse duration "${forText}" — use e.g. 30m, 2h, 1d`);
-      process.exit(1);
+  if (duration) {
+    const milliseconds = parseDuration(duration);
+    if (milliseconds == null) {
+      log(`could not parse duration "${duration}" — use 30m, 2h, or 1d`);
+      process.exitCode = 1;
+      return;
     }
-    until = Date.now() + ms;
+    until = Date.now() + milliseconds;
   }
   writePause(until);
-  log(
-    `paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"} — ` +
-      `a running loop picks this up at its next control poll (≤5 min); drafts stop, nothing is lost`,
-  );
+  log(`paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}`);
 }
 
 export function resumeCommand(): void {
-  const halt = readHalt();
-  const pause = readPause();
-  if (!halt && !pause) {
-    log("nothing to resume (no halt or pause marker)");
-  } else {
-    if (halt) log(`clearing halt (was: ${halt.reason})`);
-    if (pause) log("clearing local pause");
-    clearHalt();
-    clearPause();
+  clearHalt();
+  clearPause();
+  const status = readStatus();
+  if (status) {
+    writeStatus({
+      ...status,
+      quotaState: {
+        status: "available",
+        reasonCode: "manual_resume",
+        observedAt: Date.now(),
+      },
+    });
   }
-  const svc = serviceState();
-  if (svc.installed) {
-    const r = startService();
-    log(r.note);
+  const service = serviceState();
+  if (service.installed) {
+    const result = startService();
+    log(result.note);
+    if (!result.ok) process.exitCode = 1;
   } else {
-    log("no service installed — start the loop with: engager-agent");
+    log("local pause/halt cleared — start with `engager-agent run`");
   }
 }
 
-export function stopCommand(): void {
-  const svc = serviceState();
-  if (svc.installed) {
-    const r = stopService();
-    log(r.note);
-    return;
+export type StopCommandDeps = {
+  serviceState: typeof serviceState;
+  stopService: typeof stopService;
+  loadConfig: typeof loadConfig;
+  readOwner: typeof readRunnerLockOwner;
+  ownerLive: typeof isLockOwnerLive;
+  kill: typeof process.kill;
+  output: typeof log;
+};
+
+const REAL_STOP_DEPS: StopCommandDeps = {
+  serviceState,
+  stopService,
+  loadConfig,
+  readOwner: readRunnerLockOwner,
+  ownerLive: isLockOwnerLive,
+  kill: process.kill.bind(process),
+  output: log,
+};
+
+export function stopCommand(deps: StopCommandDeps = REAL_STOP_DEPS): void {
+  const service = deps.serviceState();
+  let serviceFailed = false;
+  if (service.installed) {
+    const result = deps.stopService();
+    deps.output(result.note);
+    serviceFailed = !result.ok;
   }
-  const st = readStatus();
-  if (st && pidAlive(st.pid)) {
-    process.kill(st.pid, "SIGTERM");
-    log(`sent SIGTERM to pid ${st.pid} — it will shut down cleanly within a moment`);
+  const config = deps.loadConfig();
+  // The lock is home-global even when agent.json is temporarily unreadable.
+  // Always inspect it after service shutdown so a foreground owner cannot be
+  // left running merely because an installed plist also exists.
+  const owner = deps.readOwner(config?.runnerId ?? "global");
+  if (owner?.processIdentity && deps.ownerLive(owner)) {
+    deps.kill(owner.pid, "SIGTERM");
+    deps.output(`sent SIGTERM to verified runner lock owner pid ${owner.pid}`);
+  } else if (owner && !owner.processIdentity) {
+    deps.output("runner lock owner has no verifiable process identity; refusing to signal its pid");
+    process.exitCode = 1;
   } else {
-    log("not running");
+    deps.output("runner is not running (no verified live lock owner)");
   }
+  if (serviceFailed) process.exitCode = 1;
 }
 
-/** True = handled here; false = caller should start the foreground loop. */
 export function startCommand(): boolean {
-  const svc = serviceState();
-  if (!svc.installed) return false;
-  const r = startService();
-  log(r.note);
+  const state = serviceState();
+  if (!state.installed) return false;
+  const result = startService();
+  log(result.note);
+  if (!result.ok) process.exitCode = 1;
   return true;
 }
 
-export function serviceCommand(action: string | undefined): void {
-  switch (action) {
-    case "install": {
-      const r = installService();
-      log(r.note);
-      process.exit(r.ok ? 0 : 1);
-      break;
-    }
-    case "uninstall": {
-      const r = uninstallService();
-      log(r.note);
-      process.exit(r.ok ? 0 : 1);
-      break;
-    }
-    case "status": {
-      statusCommand(false);
-      break;
-    }
-    default:
-      log("usage: engager-agent service <install|uninstall|status>");
-      process.exit(1);
+export function serviceCommand(action: string | undefined, version: string): void {
+  const result =
+    action === "install" || action === "repair"
+      ? installService(version)
+      : action === "uninstall"
+        ? uninstallService()
+        : null;
+  if (action === "status") {
+    statusCommand(false);
+    return;
   }
+  if (!result) {
+    log("usage: engager-agent service <install|repair|status|uninstall>");
+    process.exitCode = 1;
+    return;
+  }
+  log(result.note);
+  if (!result.ok) process.exitCode = 1;
 }
 
-const BOOLEAN_FLAGS = new Set(["--version", "-v", "--help", "-h", "--once", "--service", "--json"]);
-const VALUE_FLAGS = new Set(["--batch", "--campaign", "--interval", "--for"]);
+export function logsCommand(lines = 80): void {
+  const directory = join(agentHome(), "logs");
+  if (!existsSync(directory)) {
+    process.stdout.write("No runner logs yet.\n");
+    return;
+  }
+  const files = readdirSync(directory).filter((file) => file.endsWith(".log")).sort();
+  const latest = files.at(-1);
+  if (!latest) {
+    process.stdout.write("No runner logs yet.\n");
+    return;
+  }
+  const count = Number.isFinite(lines) ? Math.min(1_000, Math.max(1, Math.floor(lines))) : 80;
+  const safe = sanitizeLogText(readFileSync(join(directory, latest), "utf8"));
+  const tail = safe.split("\n").slice(-count);
+  process.stdout.write(`${tail.join("\n")}\n`);
+}
 
-/** First dash-prefixed token that isn't a known flag (or a known flag's value).
- *  Lives here (not cli.ts) so tests can import it — cli.ts runs main() on load. */
+export function sanitizeLogText(value: string): string {
+  const redacted = redact(value, [loadConfig()?.apiKey])
+    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]")
+    .replace(/("?(?:api[_-]?key|token|secret)"?\s*[:=]\s*)"?[^\s",}]+"?/gi, "$1[REDACTED]");
+  return redacted
+    .split(/\r?\n/)
+    .map((line) => sanitizeTerminalText(line))
+    .join("\n");
+}
+
+function parseDuration(value: string): number | null {
+  const match = /^(\d+(?:\.\d+)?)\s*(m|min|h|hr|d)$/i.exec(value.trim());
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = match[2]!.toLowerCase();
+  const milliseconds = unit.startsWith("m")
+    ? amount * 60_000
+    : unit.startsWith("h")
+      ? amount * 3_600_000
+      : amount * 86_400_000;
+  return Number.isFinite(milliseconds) && milliseconds > 0 ? milliseconds : null;
+}
+
+const BOOLEAN_FLAGS = new Set([
+  "--version",
+  "-v",
+  "--help",
+  "-h",
+  "--once",
+  "--service",
+  "--json",
+  "--repair",
+  "--reauthorize",
+]);
+const VALUE_FLAGS = new Set(["--for", "--tail", "--setup-proof-org"]);
+
 export function findUnknownFlag(argv: string[]): string | undefined {
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (!a?.startsWith("-")) continue;
-    if (BOOLEAN_FLAGS.has(a)) continue;
-    if (VALUE_FLAGS.has(a)) {
-      i++; // skip the flag's value
+  for (let index = 0; index < argv.length; index++) {
+    const value = argv[index];
+    if (!value?.startsWith("-")) continue;
+    if (BOOLEAN_FLAGS.has(value)) continue;
+    if (VALUE_FLAGS.has(value)) {
+      index += 1;
       continue;
     }
-    return a;
+    return value;
   }
   return undefined;
 }

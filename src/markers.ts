@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { agentHome } from "./config.js";
+import { writePrivateJsonDurably } from "./durable.js";
 
 /**
  * On-disk control markers under ~/.engager. They exist so intent survives the
@@ -10,7 +12,7 @@ import { agentHome } from "./config.js";
  */
 
 export type HaltMarker = { at: number; reason: string; consecutiveFailures?: number };
-export type PauseMarker = { at: number; until?: number };
+export type PauseMarker = { id?: string; at: number; until?: number };
 
 export function haltPath(): string {
   return join(agentHome(), "halted.json");
@@ -20,18 +22,19 @@ export function pausePath(): string {
   return join(agentHome(), "paused.json");
 }
 
-function readJson<T>(path: string): T | null {
+function readJson(path: string): unknown | null {
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    return null; // a corrupt marker must never wedge the CLI
+    return CORRUPT;
   }
 }
 
+const CORRUPT = Symbol("corrupt-control-marker");
+
 function writeJson(path: string, value: unknown): void {
-  mkdirSync(agentHome(), { recursive: true });
-  writeFileSync(path, JSON.stringify(value, null, 2) + "\n");
+  writePrivateJsonDurably(path, value);
 }
 
 export function writeHalt(reason: string, consecutiveFailures?: number): void {
@@ -43,7 +46,9 @@ export function writeHalt(reason: string, consecutiveFailures?: number): void {
 }
 
 export function readHalt(): HaltMarker | null {
-  return readJson<HaltMarker>(haltPath());
+  const value = readJson(haltPath());
+  if (isHaltMarker(value)) return value;
+  return value == null ? null : { at: 0, reason: "halt marker is corrupt; explicit resume required" };
 }
 
 export function clearHalt(): void {
@@ -51,18 +56,53 @@ export function clearHalt(): void {
 }
 
 export function writePause(until?: number): void {
-  writeJson(pausePath(), { at: Date.now(), ...(until != null ? { until } : {}) } satisfies PauseMarker);
+  writeJson(pausePath(), {
+    id: randomUUID(),
+    at: Date.now(),
+    ...(until != null ? { until } : {}),
+  } satisfies PauseMarker);
 }
 
 /** Active pause, or null. An expired `until` clears the marker as a side effect. */
 export function readPause(now: number = Date.now()): PauseMarker | null {
-  const m = readJson<PauseMarker>(pausePath());
-  if (!m) return null;
+  const value = readJson(pausePath());
+  if (value == null) return null;
+  if (!isPauseMarker(value)) return { at: 0 };
+  const m = value;
   if (m.until != null && m.until <= now) {
-    clearPause();
+    // Do not unlink here: a concurrent `pause` can atomically replace the
+    // expired file between this read and a delete. Leaving an inert expired
+    // marker is harmless and prevents that new intent from being erased.
     return null;
   }
   return m;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value != null && !Array.isArray(value);
+}
+
+function isHaltMarker(value: unknown): value is HaltMarker {
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.at) &&
+    Number(value.at) >= 0 &&
+    typeof value.reason === "string" &&
+    value.reason.length > 0 &&
+    value.reason.length <= 1_000 &&
+    (value.consecutiveFailures === undefined ||
+      (Number.isSafeInteger(value.consecutiveFailures) && Number(value.consecutiveFailures) >= 0))
+  );
+}
+
+function isPauseMarker(value: unknown): value is PauseMarker {
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.at) &&
+    Number(value.at) >= 0 &&
+    (value.id === undefined || (typeof value.id === "string" && value.id.length > 0 && value.id.length <= 200)) &&
+    (value.until === undefined || (Number.isSafeInteger(value.until) && Number(value.until) >= 0))
+  );
 }
 
 export function clearPause(): void {

@@ -1,7 +1,7 @@
 {
   "name": "engager-agent",
-  "version": "0.8.1",
-  "description": "Local autonomous runner for Engager agent-led campaigns: hourly no-LLM preflight over the hosted MCP, headless claude -p micro-batches when there's headroom, server-verified results.",
+  "version": "0.9.0",
+  "description": "Least-privilege local executor for Engager's leased Candidate, drafting, and reply work orders using Claude or Codex.",
   "license": "MIT",
   "author": "Slava Nikitin <nikswpe@gmail.com>",
   "homepage": "https://github.com/slavayosome/engager-agent#readme",
@@ -22,12 +22,13 @@
   ],
   "type": "module",
   "bin": {
-    "engager-agent": "dist/cli.js"
+    "engager-agent": "bundle/engager-agent.mjs"
   },
   "files": [
-    "dist",
+    "bundle",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES"
   ],
   "engines": {
     "node": ">=20"
@@ -35,21 +36,35 @@
   "publishConfig": {
     "access": "public"
   },
+  "engagerRunnerContract": {
+    "packageVersion": "1.0.1",
+    "protocolVersion": "2.1",
+    "vendoredArchive": "vendor/engager-runner-contract-1.0.1.tgz",
+    "sha256": "64ea1ebd68941a8f62977544d5d04d103fce1187fcf259c8e7cf17c96199fec8"
+  },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist bundle && tsc -p tsconfig.build.json && node scripts/build-bundle.mjs",
     "prepack": "npm run build",
+    "prepublishOnly": "node scripts/assert-release-contract.mjs",
+    "release:check-tag": "node scripts/assert-release-tag.mjs",
+    "release:pack": "node scripts/assert-release-contract.mjs && npm run build && node scripts/pack-release.mjs",
+    "release:verify-artifact": "node scripts/assert-release-artifact.mjs",
+    "release:publish-artifact": "node scripts/publish-release.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:package": "node scripts/verify-package.mjs",
+    "audit:dependencies": "npm audit",
     "dev": "tsx src/cli.ts"
   },
-  "dependencies": {
-    "@clack/prompts": "^0.11.0",
-    "@modelcontextprotocol/sdk": "^1.29.0"
-  },
   "devDependencies": {
+    "@clack/prompts": "^0.11.0",
+    "@engager/runner-contract": "file:vendor/engager-runner-contract-1.0.1.tgz",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^22.10.7",
+    "esbuild": "^0.25.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "vitest": "4.1.10",
+    "zod": "^3.24.2"
   }
 }
