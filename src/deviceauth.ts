@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import { hostname } from "node:os";
 import { z } from "zod";
-import { isSafeMcpUrl } from "./config.js";
+import {
+  isSafeMcpUrl,
+  isValidSetupProofOrganizationId,
+} from "./config.js";
 import { readBoundedJson } from "./http.js";
 
 /**
@@ -64,11 +67,7 @@ const DeviceStartResponseSchema = z
   })
   .strict();
 
-export function isValidSetupProofOrganizationId(
-  value: string | undefined,
-): value is string {
-  return z.string().uuid().safeParse(value).success;
-}
+export { isValidSetupProofOrganizationId } from "./config.js";
 
 const DevicePollResponseSchema = z.discriminatedUnion("status", [
   z.object({ status: z.enum(["pending", "denied", "expired", "not_found"]) }).strict(),

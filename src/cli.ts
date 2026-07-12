@@ -11,11 +11,16 @@ import {
   statusCommand,
   stopCommand,
 } from "./commands.js";
-import { loadConfig, loadPartialConfig } from "./config.js";
+import {
+  loadConfig,
+  loadPartialConfig,
+  saveConfig,
+} from "./config.js";
 import { runDoctor } from "./doctor.js";
 import { asRunnerFault, formatRunnerFault } from "./errors.js";
 import { controlPoll } from "./heartbeat.js";
-import { acquireRunnerLock } from "./lock.js";
+import { clearJournal } from "./journal.js";
+import { acquireRunnerLock, MAINTENANCE_TOKEN_ENV } from "./lock.js";
 import { log } from "./log.js";
 import {
   MAX_CONSECUTIVE_FAILURES,
@@ -30,9 +35,14 @@ import { readHalt, readPause, writeHalt } from "./markers.js";
 import { readStatus, writeStatus, type RunnerState, type RunnerStatus } from "./status.js";
 import { AGENT_VERSION } from "./version.js";
 import { providerSessionsToday } from "./session-usage.js";
-import { runWizard } from "./wizard.js";
+import { upgradeAgent } from "./upgrade.js";
+import {
+  isAcceptedSetupProof,
+  runWizard,
+  settleAcceptedSetupProof,
+} from "./wizard.js";
 
-const USAGE = `engager-agent — least-privilege Engager runner
+export const USAGE = `engager-agent — least-privilege Engager runner
 
   engager-agent setup [--reauthorize] [--setup-proof-org UUID]
                                         guided engine detection + browser authorization
@@ -42,8 +52,9 @@ const USAGE = `engager-agent — least-privilege Engager runner
   engager-agent run --once              claim at most one server-authored work order
   engager-agent service install         install verified versioned launchd payload (macOS)
   engager-agent service repair          repair the durable service entry
-  engager-agent service status          service and runner status
+  engager-agent service status          read-only service/transition status
   engager-agent service uninstall       remove autostart; preserve config/runtime
+  npx engager-agent@latest upgrade       activate verified latest payload; repair service
   engager-agent logs [--tail N]         sanitized recent local logs
   engager-agent pause [--for 2h]        pause local claims
   engager-agent resume                  clear pause/halt and restart installed service
@@ -120,6 +131,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "service":
       serviceCommand(argv[1] === "install" && has("--repair") ? "repair" : argv[1], AGENT_VERSION);
       return;
+    case "upgrade": {
+      const result = upgradeAgent(AGENT_VERSION);
+      log(result.note);
+      if (!result.ok) process.exitCode = 1;
+      return;
+    }
     case "logs":
       logsCommand(Number(value("--tail") ?? 80));
       return;
@@ -159,11 +176,28 @@ export async function runForeground(service: boolean): Promise<void> {
     }
     throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
   }
+  if (config.pendingSetupProofOrganizationId) {
+    const message =
+      "SETUP_PROOF_PENDING: run `engager-agent run --once` to claim or reconcile the exact setup proof before production polling";
+    if (service) {
+      log(message);
+      return;
+    }
+    throw new Error(message);
+  }
+  // acquireRunnerLock consumes the one-time token. Capture only the handoff
+  // mode first so the verified replacement cannot claim work before commit.
+  const maintenanceHandoff =
+    service && Boolean(process.env[MAINTENANCE_TOKEN_ENV]);
   const lock = acquireRunnerLock(config.runnerId);
   const release = () => lock.release();
   process.once("exit", release);
   try {
-    await runLoop(config, { service, version: AGENT_VERSION });
+    await runLoop(config, {
+      service,
+      version: AGENT_VERSION,
+      maintenanceHandoff,
+    });
   } finally {
     process.off("exit", release);
     lock.release();
@@ -177,6 +211,8 @@ export type RunOnceDeps = {
   status: typeof readStatus;
   lock: typeof acquireRunnerLock;
   cycle: typeof runControlCycle;
+  save: typeof saveConfig;
+  clearProofJournal: typeof clearJournal;
   persist: (status: RunnerStatus) => void;
   terminal: typeof controlPoll;
   markHalt: typeof writeHalt;
@@ -191,6 +227,8 @@ const REAL_RUN_ONCE_DEPS: RunOnceDeps = {
   status: readStatus,
   lock: acquireRunnerLock,
   cycle: runControlCycle,
+  save: saveConfig,
+  clearProofJournal: clearJournal,
   persist: writeStatus,
   terminal: controlPoll,
   markHalt: writeHalt,
@@ -236,12 +274,27 @@ export async function runOnce(deps: RunOnceDeps = REAL_RUN_ONCE_DEPS): Promise<v
           sessionsToday,
           ...(quotaState ? { quotaState } : {}),
         },
-        { allowWork: !pause, signal: controller.signal },
+        {
+          allowWork: !pause,
+          signal: controller.signal,
+          ...(config.pendingSetupProofOrganizationId
+            ? { claimPurpose: "setup_proof" as const }
+            : {}),
+        },
       );
       protocol = result.protocol;
       protocolVerifiedAt = Date.now();
       quotaState = result.quotaState;
       const outcome = result.outcome;
+      if (
+        config.pendingSetupProofOrganizationId &&
+        isAcceptedSetupProof(outcome)
+      ) {
+        settleAcceptedSetupProof(config, {
+          save: deps.save,
+          clearJournal: deps.clearProofJournal,
+        });
+      }
       cycle = cycleInfoFromOutcome(outcome);
       fatal = outcome.fatal === true;
       if (outcome.ok) consecutiveFailures = 0;

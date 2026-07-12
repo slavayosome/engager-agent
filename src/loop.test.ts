@@ -3,7 +3,13 @@ import type { AgentConfig } from "./config.js";
 import type { AgentEngine } from "./engine.js";
 import type { ControlCycleDeps } from "./loop.js";
 import { RunnerFault } from "./errors.js";
-import { countsTowardHalt, faultCountsTowardHalt, runControlCycle } from "./loop.js";
+import {
+  countsTowardHalt,
+  faultCountsTowardHalt,
+  runControlCycle,
+  upgradeHandoffStoppedCycle,
+  waitForUpgradeTransitionCommit,
+} from "./loop.js";
 import type { EngagerMcp } from "./mcp.js";
 
 const config: AgentConfig = {
@@ -67,6 +73,99 @@ const heartbeat = {
 };
 
 describe("fail-closed control loop", () => {
+  it("keeps a bootstrapped upgrade target readiness-only until commit and exits the handoff when its upgrader dies", async () => {
+    const execute = vi.fn();
+    const engineRun = vi.fn();
+    const negotiated = vi.fn();
+    const cycle = await runControlCycle(
+      config,
+      "0.9.1",
+      heartbeat,
+      { readinessOnly: true, allowWork: false, onNegotiated: negotiated },
+      deps({
+        hasJournal: () => true,
+        execute,
+        engine: () => ({ ...engine(true), run: engineRun }),
+      }),
+    );
+
+    let now = 0;
+    const handoff = await waitForUpgradeTransitionCommit(250, {
+      pending: () => true,
+      now: () => now,
+      pause: async (milliseconds) => {
+        now += milliseconds;
+      },
+    });
+
+    expect(negotiated).toHaveBeenCalledWith(
+      "2.1",
+      expect.any(Object),
+      true,
+    );
+    expect(cycle.outcome).toMatchObject({ ran: false, ok: true });
+    expect(execute).not.toHaveBeenCalled();
+    expect(engineRun).not.toHaveBeenCalled();
+    expect(handoff).toEqual({
+      ok: false,
+      reason: "upgrade transition was not committed before the maintenance handoff timeout",
+    });
+    expect(
+      upgradeHandoffStoppedCycle(handoff.ok ? "" : handoff.reason, 500),
+    ).toEqual({
+      at: 500,
+      ran: false,
+      ok: false,
+      note: "upgrade transition was not committed before the maintenance handoff timeout",
+      errorCode: "INTERNAL_ERROR",
+    });
+  });
+
+  it("opens the upgrade handoff only after the durable transition disappears", async () => {
+    const states = [true, true, false];
+    let now = 0;
+    const result = await waitForUpgradeTransitionCommit(1_000, {
+      pending: () => states.shift() ?? false,
+      now: () => now,
+      pause: async (milliseconds) => {
+        now += milliseconds;
+      },
+    });
+    expect(result).toEqual({ ok: true });
+    expect(now).toBe(200);
+  });
+
+  it("rechecks the upgrade fence after negotiation and before receipt recovery or claim", async () => {
+    const execute = vi.fn();
+    const result = await runControlCycle(
+      config,
+      "0.9.0",
+      heartbeat,
+      { executionFence: () => false },
+      deps({ hasJournal: () => true, execute }),
+    );
+    expect(result.outcome).toMatchObject({
+      ran: false,
+      ok: true,
+      note: expect.stringContaining("upgrade transition fenced"),
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("fails the handoff closed when the transition journal becomes unsafe", async () => {
+    const result = await waitForUpgradeTransitionCommit(1_000, {
+      pending: () => {
+        throw new Error("mode changed");
+      },
+      now: () => 0,
+      pause: async () => undefined,
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: "upgrade transition journal became unsafe: mode changed",
+    });
+  });
+
   it("persists the negotiated startup milestone before invoking the claim executor", async () => {
     const events: string[] = [];
     const execute = vi.fn(async () => {

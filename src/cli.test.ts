@@ -3,6 +3,7 @@ import type { AgentConfig } from "./config.js";
 import {
   runOnce,
   setupProofOrganizationIdFromArgs,
+  USAGE,
   type RunOnceDeps,
 } from "./cli.js";
 import { RunnerFault } from "./errors.js";
@@ -53,6 +54,7 @@ function dependencies(overrides: Partial<RunOnceDeps> = {}) {
         token: "test-token",
         runnerId: config.runnerId,
         startedAt: Date.now(),
+        processIdentity: "test-process",
       },
       release: vi.fn(),
     }),
@@ -61,6 +63,8 @@ function dependencies(overrides: Partial<RunOnceDeps> = {}) {
       quotaState: { status: "available", observedAt: Date.now() },
       outcome: { ran: false, ok: true, note: "empty" },
     })),
+    save: vi.fn(),
+    clearProofJournal: vi.fn(),
     persist: (status) => persisted.push(status),
     terminal,
     markHalt,
@@ -72,6 +76,119 @@ function dependencies(overrides: Partial<RunOnceDeps> = {}) {
 }
 
 describe("run --once parity", () => {
+  it("claims only setup-proof work and clears the local binding after an accepted receipt", async () => {
+    const pendingConfig: AgentConfig = {
+      ...config,
+      pendingSetupProofOrganizationId: "11111111-1111-4111-8111-111111111111",
+    };
+    const save = vi.fn();
+    const clearProofJournal = vi.fn();
+    const cycle = vi.fn(async (_config, _version, _state, options) => {
+      expect(options.claimPurpose).toBe("setup_proof");
+      return {
+        protocol: "2.1" as const,
+        quotaState: { status: "available", observedAt: Date.now() },
+        outcome: {
+          ran: true,
+          ok: true,
+          note: "proof accepted",
+          workOrderId: "22222222-2222-4222-8222-222222222222",
+          lane: "triage" as const,
+          workPurpose: "setup_proof" as const,
+          completion: {
+            contractVersion: 2 as const,
+            workOrderId: "22222222-2222-4222-8222-222222222222",
+            lane: "triage" as const,
+            status: "completed" as const,
+            completedAt: Date.now(),
+            result: {
+              accepted: 1,
+              rejected: 0,
+              alreadyExists: 0,
+              failed: 0,
+              unfinished: 0,
+            },
+          },
+        },
+      };
+    });
+    const fixture = dependencies({
+      load: () => pendingConfig,
+      cycle,
+      save,
+      clearProofJournal,
+    });
+
+    await runOnce(fixture.deps);
+
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0]?.[0]).not.toHaveProperty(
+      "pendingSetupProofOrganizationId",
+    );
+    expect(clearProofJournal).toHaveBeenCalledOnce();
+    expect(process.exitCode).not.toBe(1);
+  });
+
+  it("retains the proof journal when clearing the local marker fails", async () => {
+    const pendingConfig: AgentConfig = {
+      ...config,
+      pendingSetupProofOrganizationId: "11111111-1111-4111-8111-111111111111",
+    };
+    const clearProofJournal = vi.fn();
+    const cycle = vi.fn(async () => ({
+      protocol: "2.1" as const,
+      quotaState: { status: "available", observedAt: Date.now() },
+      outcome: {
+        ran: true,
+        ok: true,
+        note: "proof accepted",
+        workOrderId: "22222222-2222-4222-8222-222222222222",
+        lane: "triage" as const,
+        workPurpose: "setup_proof" as const,
+        completion: {
+          contractVersion: 2 as const,
+          workOrderId: "22222222-2222-4222-8222-222222222222",
+          lane: "triage" as const,
+          status: "completed" as const,
+          completedAt: Date.now(),
+          result: {
+            accepted: 1,
+            rejected: 0,
+            alreadyExists: 0,
+            failed: 0,
+            unfinished: 0,
+          },
+        },
+      },
+    }));
+    const fixture = dependencies({
+      load: () => pendingConfig,
+      cycle,
+      save: () => {
+        throw new Error("disk full before marker commit");
+      },
+      clearProofJournal,
+    });
+
+    await runOnce(fixture.deps);
+
+    expect(clearProofJournal).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("retains the setup-proof binding until the receipt is accepted", async () => {
+    const pendingConfig: AgentConfig = {
+      ...config,
+      pendingSetupProofOrganizationId: "11111111-1111-4111-8111-111111111111",
+    };
+    const save = vi.fn();
+    const fixture = dependencies({ load: () => pendingConfig, save });
+
+    await runOnce(fixture.deps);
+
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("persists the crash-safe provider-session ledger count after a thrown attempt", async () => {
     const fixture = dependencies({
       status: () => ({
@@ -162,6 +279,10 @@ describe("run --once parity", () => {
 });
 
 describe("setup authorization arguments", () => {
+  it("advertises the canonical package-manager upgrade command", () => {
+    expect(USAGE).toContain("npx engager-agent@latest upgrade");
+  });
+
   it("parses a purpose-bound project id and rejects a missing value", () => {
     expect(
       setupProofOrganizationIdFromArgs([

@@ -4,9 +4,16 @@ import { engineFor } from "./engines/index.js";
 import { isEngineReady } from "./engine.js";
 import { asRunnerFault } from "./errors.js";
 import { inspectJournal, journalBinding } from "./journal.js";
+import {
+  diagnoseLock,
+  inspectMaintenanceLock,
+  inspectRunnerLock,
+  type LockDiagnostic,
+} from "./lock.js";
 import { EngagerMcp } from "./mcp.js";
 import { providerSessionsToday } from "./session-usage.js";
 import { serviceState } from "./service.js";
+import { readUpgradeTransition } from "./upgrade-transition.js";
 
 export type DoctorCheck = {
   name: string;
@@ -28,6 +35,8 @@ export async function runDoctor(
 ): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
   addRecoveryCheck(checks, config, now);
+  addLockChecks(checks, config);
+  checks.push(diagnoseUpgradeTransition());
   try {
     const sessions = providerSessionsToday(now);
     checks.push({
@@ -132,6 +141,80 @@ export async function runDoctor(
   });
 
   return report(checks);
+}
+
+export function diagnoseUpgradeTransition(): DoctorCheck {
+  try {
+    const transition = readUpgradeTransition();
+    if (!transition) {
+      return {
+        name: "upgrade-transition",
+        status: "pass",
+        detail: "no interrupted runtime or launchd transition",
+      };
+    }
+    return {
+      name: "upgrade-transition",
+      status: "fail",
+      detail: `interrupted runner ${transition.target.version} transition remains at phase ${transition.phase}`,
+      recovery: "Run `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start`; status and doctor are read-only.",
+    };
+  } catch {
+    return {
+      name: "upgrade-transition",
+      status: "fail",
+      detail: "upgrade-transition.json is corrupt, unsafe, or not a private regular file",
+      recovery: "Preserve the journal and run `engager-agent service repair` or `engager-agent upgrade` after repairing ~/.engager ownership/permissions.",
+    };
+  }
+}
+
+function addLockChecks(checks: DoctorCheck[], config: AgentConfig | null): void {
+  checks.push(
+    lockCheck(
+      "execution-lock",
+      diagnoseLock(inspectRunnerLock(config?.runnerId ?? "global")),
+      "Run `engager-agent stop` if the verified process should exit; otherwise leave it running.",
+    ),
+    lockCheck(
+      "maintenance-lock",
+      diagnoseLock(inspectMaintenanceLock()),
+      "Wait for the active lifecycle command; if it exited, rerun `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start`.",
+    ),
+  );
+}
+
+function lockCheck(
+  name: string,
+  diagnostic: LockDiagnostic,
+  activeRecovery: string,
+): DoctorCheck {
+  if (diagnostic.state === "absent") {
+    return { name, status: "pass", detail: diagnostic.detail };
+  }
+  const pid = diagnostic.pid ? ` (pid ${diagnostic.pid})` : "";
+  if (diagnostic.state === "active") {
+    return {
+      name,
+      status: "warn",
+      detail: `${diagnostic.detail}${pid}`,
+      recovery: activeRecovery,
+    };
+  }
+  if (diagnostic.state === "stale") {
+    return {
+      name,
+      status: "warn",
+      detail: `${diagnostic.detail}${pid}`,
+      recovery: "Retry the intended command; it will recover only this structurally valid dead owner under an exclusive recovery guard.",
+    };
+  }
+  return {
+    name,
+    status: "fail",
+    detail: `${diagnostic.detail}${pid}`,
+    recovery: "Preserve ~/.engager/locks; repair ownership or metadata only after proving no process owns the lock, then rerun doctor.",
+  };
 }
 
 function addRecoveryCheck(

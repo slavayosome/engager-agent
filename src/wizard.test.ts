@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { AgentConfig } from "./config.js";
 import type { AgentEngine, EngineName } from "./engine.js";
 import type { ExecutionOutcome } from "./executor.js";
-import { detectSetupEngines, isAcceptedSetupProof } from "./wizard.js";
+import {
+  detectSetupEngines,
+  isAcceptedSetupProof,
+  planSetupCredential,
+  settleAcceptedSetupProof,
+} from "./wizard.js";
 
 function outcome(status: "completed" | "partial" | "failed"): ExecutionOutcome {
   return {
@@ -33,6 +39,111 @@ describe("setup proof arming gate", () => {
     expect(isAcceptedSetupProof(outcome("partial"))).toBe(false);
     expect(isAcceptedSetupProof(outcome("failed"))).toBe(false);
     expect(isAcceptedSetupProof({ ...outcome("completed"), workPurpose: "production" })).toBe(false);
+  });
+
+  it("commits marker removal before clearing the idempotent proof journal", () => {
+    const pending: AgentConfig = {
+      configVersion: 2,
+      mcpUrl: "https://engager.test/mcp",
+      apiKey: "eng_proof_key",
+      credentialProfile: "runner",
+      runnerId: "proof-runner",
+      engine: "claude",
+      enginePath: "/opt/homebrew/bin/claude",
+      model: "sonnet",
+      maxTurns: 4,
+      dailySessionCap: 24,
+      sessionTimeoutMinutes: 20,
+      pendingSetupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
+    };
+    const events: string[] = [];
+    const settled = settleAcceptedSetupProof(pending, {
+      save: (value) => {
+        expect(value.pendingSetupProofOrganizationId).toBeUndefined();
+        events.push("marker-saved");
+      },
+      clearJournal: () => events.push("journal-cleared"),
+    });
+    expect(settled.pendingSetupProofOrganizationId).toBeUndefined();
+    expect(events).toEqual(["marker-saved", "journal-cleared"]);
+
+    const clearJournal = vi.fn();
+    expect(() =>
+      settleAcceptedSetupProof(pending, {
+        save: () => {
+          throw new Error("disk full");
+        },
+        clearJournal,
+      }),
+    ).toThrow("disk full");
+    expect(clearJournal).not.toHaveBeenCalled();
+  });
+
+  it("reuses only the same pending project binding and rotates mismatches or explicit reauthorization", () => {
+    const existing = {
+      apiKey: "eng_bound_key",
+      pendingSetupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
+    };
+    expect(
+      planSetupCredential(existing, {
+        setupProofOrganizationId:
+          "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toMatchObject({
+      reusingExistingCredential: true,
+      replacingCredential: false,
+    });
+    expect(planSetupCredential(existing, {})).toMatchObject({
+      setupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
+      reusingExistingCredential: true,
+      replacingCredential: false,
+    });
+    expect(
+      planSetupCredential(
+        {
+          apiKey: "eng_case_bound_key",
+          pendingSetupProofOrganizationId:
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        },
+        {
+          setupProofOrganizationId:
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+        },
+      ),
+    ).toMatchObject({
+      setupProofOrganizationId:
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      reusingExistingCredential: true,
+      replacingCredential: false,
+    });
+    expect(
+      planSetupCredential(existing, {
+        setupProofOrganizationId:
+          "22222222-2222-4222-8222-222222222222",
+      }),
+    ).toMatchObject({
+      reusingExistingCredential: false,
+      replacingCredential: true,
+    });
+    expect(
+      planSetupCredential(existing, {
+        reauthorize: true,
+        setupProofOrganizationId:
+          "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toMatchObject({
+      reusingExistingCredential: false,
+      replacingCredential: true,
+    });
+    expect(
+      planSetupCredential({ apiKey: "eng_general_key" }, {
+        setupProofOrganizationId:
+          "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toMatchObject({ replacingCredential: true });
   });
 });
 

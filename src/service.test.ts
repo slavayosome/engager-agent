@@ -1,22 +1,41 @@
-import { existsSync, lstatSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activateDurablePayload,
   installDurablePayload,
   isVerifiedServiceStatus,
   isVolatileRuntimePath,
+  LAUNCHCTL_PATH,
+  PLUTIL_PATH,
+  plistWithoutMaintenanceToken,
+  plistWithMaintenanceToken,
   renderPlist,
+  runBoundedServiceCommand,
   restoreDurableActivation,
   runtimeRoot,
   serviceEntryPath,
+  shouldRestartPriorService,
   startService,
   stableBrewPath,
   trustedServicePath,
+  uninstallService,
   serviceVerificationState,
   waitForServiceLoad,
   type StartServiceDeps,
+  type UninstallServiceDeps,
 } from "./service.js";
 import type { RunnerStatus } from "./status.js";
 
@@ -38,6 +57,60 @@ afterEach(() => {
 });
 
 describe("durable service payload", () => {
+  it("bounds launchctl/plutil subprocesses and surfaces timeout as failure", () => {
+    expect(LAUNCHCTL_PATH).toBe("/bin/launchctl");
+    expect(PLUTIL_PATH).toBe("/usr/bin/plutil");
+    const timedOut = Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+    const spawn = vi.fn(() => ({
+      status: null,
+      signal: "SIGTERM",
+      output: [],
+      pid: 1,
+      stdout: "",
+      stderr: "",
+      error: timedOut,
+    })) as unknown as typeof import("node:child_process").spawnSync;
+    expect(runBoundedServiceCommand("launchctl", ["print", "x"], 1234, spawn)).toEqual({
+      status: null,
+      out: "launchctl timed out after 1234ms",
+    });
+    expect(spawn).toHaveBeenCalledWith(
+      "launchctl",
+      ["print", "x"],
+      expect.objectContaining({ timeout: 1234 }),
+    );
+  });
+
+  it("uninstall bootouts, disables, and durably removes the plist in order", () => {
+    const calls: string[] = [];
+    const deps: UninstallServiceDeps = {
+      platform: "darwin",
+      launch: (command) => {
+        calls.push(command);
+        return { status: 0, out: "" };
+      },
+      plist: () => "/tmp/test.plist",
+      exists: () => true,
+      remove: () => calls.push("remove"),
+    };
+    expect(uninstallService(deps).ok).toBe(true);
+    expect(calls).toEqual(["bootout", "disable", "remove"]);
+
+    calls.length = 0;
+    expect(
+      uninstallService({
+        ...deps,
+        launch: (command) => {
+          calls.push(command);
+          return command === "disable"
+            ? { status: 1, out: "timeout" }
+            : { status: 0, out: "" };
+        },
+      }).ok,
+    ).toBe(false);
+    expect(calls).toEqual(["bootout", "disable"]);
+  });
+
   it("accepts current durable negotiation plus engine readiness without waiting for cognition", () => {
     const status: RunnerStatus = {
       schemaVersion: 2,
@@ -185,6 +258,40 @@ describe("durable service payload", () => {
     expect(plist).toContain("<string>--service</string>");
     expect(plist).toContain("<key>Umask</key>\n  <integer>63</integer>");
     expect(plist).not.toMatch(/_npx|\.hermes|Bearer|apiKey/i);
+    const tokenedRollback = plistWithMaintenanceToken(
+      Buffer.from(plist),
+      "maintenance-token-123",
+    );
+    expect(tokenedRollback).toContain("ENGAGER_AGENT_MAINTENANCE_TOKEN");
+    expect(tokenedRollback).toContain("maintenance-token-123");
+    expect(plist).not.toContain("maintenance-token-123");
+    expect(
+      plistWithoutMaintenanceToken(Buffer.from(tokenedRollback)).toString(),
+    ).toBe(plist);
+    expect(() =>
+      plistWithoutMaintenanceToken(
+        Buffer.from(tokenedRollback.replace("</dict>", `${tokenedRollback}</dict>`)),
+      ),
+    ).toThrow(/ambiguous maintenance-token/i);
+  });
+
+  it("preserves a previously stopped service across rollback", () => {
+    expect(
+      shouldRestartPriorService({
+        leaveStopped: true,
+        hadPriorPlist: true,
+        hadPriorActivation: true,
+        serviceStoppedForMaintenance: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartPriorService({
+        leaveStopped: false,
+        hadPriorPlist: true,
+        hadPriorActivation: true,
+        serviceStoppedForMaintenance: true,
+      }),
+    ).toBe(true);
   });
 
   it("refuses transient package-manager, Codex-owned, cache, and version-manager runtimes", () => {
@@ -244,7 +351,67 @@ describe("durable service payload", () => {
       "third-party",
     );
     expect(installDurablePayload("0.9.0", source)).toEqual(installed);
+    const repeated = activateDurablePayload(installed);
+    expect(repeated.currentTarget).toContain("versions/0.9.0-");
+    expect(repeated.previousTarget).toBeNull();
+    expect(readFileSync(serviceEntryPath(), "utf8")).toContain('console.log("0.9.0")');
     restoreDurableActivation(first);
     expect(existsSync(serviceEntryPath())).toBe(false);
+  });
+
+  it("rejects changed modes and extra files in an existing versioned payload", () => {
+    const source = join(home, "strict-source.mjs");
+    writeFileSync(source, '#!/usr/bin/env node\nconsole.log("0.9.0")\n');
+    writeFileSync(join(home, "engine-watchdog.mjs"), "process.exit(0);\n");
+    writeFileSync(join(home, "LICENSE"), "test license\n");
+    writeFileSync(join(home, "THIRD_PARTY_NOTICES"), "test notices\n");
+    writeFileSync(join(home, "THIRD_PARTY_COMPONENTS.json"), '{"components":[]}\n');
+    const installed = installDurablePayload("0.9.0", source);
+
+    chmodSync(join(installed.versionDir, "LICENSE"), 0o600);
+    expect(() => installDurablePayload("0.9.0", source)).toThrow(/exact verification/);
+    chmodSync(join(installed.versionDir, "LICENSE"), 0o400);
+    writeFileSync(join(installed.versionDir, "unexpected.txt"), "extra\n");
+    expect(() => installDurablePayload("0.9.0", source)).toThrow(/file set is not exact/);
+  });
+
+  it("rejects symlinked runtime and versions roots before staging payload bytes", () => {
+    const source = join(home, "symlink-source.mjs");
+    writeFileSync(source, '#!/usr/bin/env node\nconsole.log("0.9.0")\n');
+    writeFileSync(join(home, "engine-watchdog.mjs"), "process.exit(0);\n");
+    writeFileSync(join(home, "LICENSE"), "test license\n");
+    writeFileSync(join(home, "THIRD_PARTY_NOTICES"), "test notices\n");
+    writeFileSync(join(home, "THIRD_PARTY_COMPONENTS.json"), '{"components":[]}\n');
+
+    const externalRuntime = mkdtempSync(join(tmpdir(), "engager-external-runtime-"));
+    symlinkSync(externalRuntime, runtimeRoot(), "dir");
+    expect(() => installDurablePayload("0.9.0", source)).toThrow(/runtime root must be a real directory/);
+    expect(existsSync(join(externalRuntime, "versions"))).toBe(false);
+
+    process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-service-versions-test-"));
+    const runtime = runtimeRoot();
+    mkdirSync(runtime, { mode: 0o700 });
+    const externalVersions = mkdtempSync(join(tmpdir(), "engager-external-versions-"));
+    symlinkSync(externalVersions, join(runtime, "versions"), "dir");
+    expect(() => installDurablePayload("0.9.0", source)).toThrow(
+      /runtime versions root must be a real directory/,
+    );
+    expect(readdirSync(externalVersions)).toEqual([]);
+  });
+
+  it("requires owned private real runtime directories before staging", () => {
+    const source = join(home, "private-root-source.mjs");
+    writeFileSync(source, '#!/usr/bin/env node\nconsole.log("0.9.0")\n');
+    writeFileSync(join(home, "engine-watchdog.mjs"), "process.exit(0);\n");
+    writeFileSync(join(home, "LICENSE"), "test license\n");
+    writeFileSync(join(home, "THIRD_PARTY_NOTICES"), "test notices\n");
+    writeFileSync(join(home, "THIRD_PARTY_COMPONENTS.json"), '{"components":[]}\n');
+    mkdirSync(runtimeRoot(), { mode: 0o777 });
+
+    installDurablePayload("0.9.0", source);
+    expect(lstatSync(runtimeRoot()).isSymbolicLink()).toBe(false);
+    expect(lstatSync(runtimeRoot()).mode & 0o777).toBe(0o700);
+    expect(lstatSync(join(runtimeRoot(), "versions")).isSymbolicLink()).toBe(false);
+    expect(lstatSync(join(runtimeRoot(), "versions")).mode & 0o777).toBe(0o700);
   });
 });

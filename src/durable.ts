@@ -12,12 +12,21 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-function syncDirectory(directory: string): void {
+export function syncDirectoryDurably(directory: string): void {
   const directoryDescriptor = openSync(directory, constants.O_RDONLY);
   try {
     fsyncSync(directoryDescriptor);
   } finally {
     closeSync(directoryDescriptor);
+  }
+}
+
+export function syncFileDurably(path: string): void {
+  const descriptor = openSync(path, constants.O_RDONLY);
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
   }
 }
 
@@ -48,7 +57,7 @@ export function writePrivateFileDurably(path: string, contents: string): void {
     renamed = true;
     chmodSync(path, 0o600);
 
-    syncDirectory(directory);
+    syncDirectoryDurably(directory);
   } finally {
     if (fileDescriptor != null) closeSync(fileDescriptor);
     if (!renamed) rmSync(temporary, { force: true });
@@ -63,6 +72,32 @@ export function renamePathDurably(source: string, destination: string): void {
   const sourceDirectory = dirname(source);
   const destinationDirectory = dirname(destination);
   renameSync(source, destination);
-  syncDirectory(sourceDirectory);
-  if (destinationDirectory !== sourceDirectory) syncDirectory(destinationDirectory);
+  syncDirectoryDurably(sourceDirectory);
+  if (destinationDirectory !== sourceDirectory) syncDirectoryDurably(destinationDirectory);
+}
+
+export function removePathDurably(path: string): void {
+  const directory = dirname(path);
+  rmSync(path, { force: true });
+  syncDirectoryDurably(directory);
+}
+
+export function commitVerifiedFileDurably(
+  source: string,
+  destination: string,
+  mode: number = 0o600,
+): void {
+  const descriptor = openSync(source, constants.O_RDONLY);
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  const sourceDirectory = dirname(source);
+  const destinationDirectory = dirname(destination);
+  renameSync(source, destination);
+  chmodSync(destination, mode);
+  syncFileDurably(destination);
+  syncDirectoryDurably(destinationDirectory);
+  if (sourceDirectory !== destinationDirectory) syncDirectoryDurably(sourceDirectory);
 }

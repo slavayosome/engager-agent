@@ -3,16 +3,23 @@ import { join } from "node:path";
 import { agentHome, configFileMode, loadConfig } from "./config.js";
 import { redact, sanitizeTerminalText } from "./errors.js";
 import { log } from "./log.js";
-import { isLockOwnerLive, readRunnerLockOwner } from "./lock.js";
-import { clearHalt, clearPause, readHalt, readPause, writePause } from "./markers.js";
 import {
-  installService,
-  serviceState,
-  startService,
-  stopService,
-  uninstallService,
-} from "./service.js";
+  diagnoseLock,
+  inspectMaintenanceLock,
+  inspectRunnerLock,
+} from "./lock.js";
+import { clearHalt, clearPause, readHalt, readPause, writePause } from "./markers.js";
+import { serviceState } from "./service.js";
 import { readStatus, writeStatus } from "./status.js";
+import {
+  ensureServiceInstalledWithMaintenance,
+  resumeAgentWithMaintenance,
+  startServiceWithMaintenance,
+  stopAgentWithMaintenance,
+  uninstallServiceWithMaintenance,
+  upgradeAgent,
+} from "./upgrade.js";
+import { hasUpgradeTransition } from "./upgrade-transition.js";
 
 const fmtAge = (timestamp: number, now: number): string => {
   const minutes = Math.round((now - timestamp) / 60_000);
@@ -20,15 +27,27 @@ const fmtAge = (timestamp: number, now: number): string => {
 };
 
 export function statusCommand(json: boolean): void {
+  const transitionPending = hasUpgradeTransition();
+  if (transitionPending) process.exitCode = 1;
   const now = Date.now();
   const config = loadConfig();
   const status = readStatus();
   const halt = readHalt();
   const pause = readPause(now);
   const service = serviceState();
-  const owner = config ? readRunnerLockOwner(config.runnerId) : null;
-  const alive = status != null && owner?.pid === status.pid && isLockOwnerLive(owner);
-  const verdict = halt
+  const executionLock = diagnoseLock(inspectRunnerLock(config?.runnerId ?? "global"));
+  const maintenanceLock = diagnoseLock(inspectMaintenanceLock());
+  const unsafeLock = executionLock.state === "invalid" || maintenanceLock.state === "invalid";
+  if (unsafeLock) process.exitCode = 1;
+  const alive =
+    status != null &&
+    executionLock.state === "active" &&
+    executionLock.pid === status.pid;
+  const verdict = unsafeLock
+    ? "LOCK SAFETY BLOCK — run `engager-agent doctor` before any lifecycle action"
+    : transitionPending
+    ? "UPGRADE RECOVERY REQUIRED — run `engager-agent upgrade`, `engager-agent start`, or `engager-agent service repair`"
+    : halt
     ? `HALTED — ${halt.reason}`
     : !config
       ? configFileMode() != null && configFileMode() !== 0o600
@@ -53,7 +72,7 @@ export function statusCommand(json: boolean): void {
     : null;
   if (json) {
     process.stdout.write(
-      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service }, null, 2)}\n`,
+      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service, transitionPending, locks: { execution: executionLock, maintenance: maintenanceLock } }, null, 2)}\n`,
     );
     return;
   }
@@ -88,6 +107,9 @@ export function statusCommand(json: boolean): void {
     `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`,
   );
   lines.push(
+    `  locks execution ${executionLock.state}${executionLock.pid ? ` (pid ${executionLock.pid})` : ""} · maintenance ${maintenanceLock.state}${maintenanceLock.pid ? ` (pid ${maintenanceLock.pid})` : ""}`,
+  );
+  lines.push(
     config ? "  next: engager-agent doctor" : "  next: engager-agent setup",
   );
   process.stdout.write(`${lines.join("\n")}\n`);
@@ -108,90 +130,86 @@ export function pauseCommand(duration?: string): void {
   log(`paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}`);
 }
 
-export function resumeCommand(): void {
-  clearHalt();
-  clearPause();
-  const status = readStatus();
-  if (status) {
-    writeStatus({
-      ...status,
-      quotaState: {
-        status: "available",
-        reasonCode: "manual_resume",
-        observedAt: Date.now(),
-      },
-    });
-  }
-  const service = serviceState();
-  if (service.installed) {
-    const result = startService();
-    log(result.note);
-    if (!result.ok) process.exitCode = 1;
-  } else {
-    log("local pause/halt cleared — start with `engager-agent run`");
-  }
+export type ResumeCommandDeps = {
+  resume: typeof resumeAgentWithMaintenance;
+  clearHalt: typeof clearHalt;
+  clearPause: typeof clearPause;
+  readStatus: typeof readStatus;
+  writeStatus: typeof writeStatus;
+  now: () => number;
+  output: typeof log;
+};
+
+const REAL_RESUME_DEPS: ResumeCommandDeps = {
+  resume: resumeAgentWithMaintenance,
+  clearHalt,
+  clearPause,
+  readStatus,
+  writeStatus,
+  now: Date.now,
+  output: log,
+};
+
+export function resumeCommand(deps: ResumeCommandDeps = REAL_RESUME_DEPS): void {
+  const result = deps.resume(() => {
+    deps.clearHalt();
+    deps.clearPause();
+    const status = deps.readStatus();
+    if (status) {
+      deps.writeStatus({
+        ...status,
+        quotaState: {
+          status: "available",
+          reasonCode: "manual_resume",
+          observedAt: deps.now(),
+        },
+      });
+    }
+  });
+  deps.output(result.note);
+  if (!result.ok) process.exitCode = 1;
 }
 
 export type StopCommandDeps = {
-  serviceState: typeof serviceState;
-  stopService: typeof stopService;
-  loadConfig: typeof loadConfig;
-  readOwner: typeof readRunnerLockOwner;
-  ownerLive: typeof isLockOwnerLive;
-  kill: typeof process.kill;
+  stop: typeof stopAgentWithMaintenance;
   output: typeof log;
 };
 
 const REAL_STOP_DEPS: StopCommandDeps = {
-  serviceState,
-  stopService,
-  loadConfig,
-  readOwner: readRunnerLockOwner,
-  ownerLive: isLockOwnerLive,
-  kill: process.kill.bind(process),
+  stop: stopAgentWithMaintenance,
   output: log,
 };
 
 export function stopCommand(deps: StopCommandDeps = REAL_STOP_DEPS): void {
-  const service = deps.serviceState();
-  let serviceFailed = false;
-  if (service.installed) {
-    const result = deps.stopService();
-    deps.output(result.note);
-    serviceFailed = !result.ok;
-  }
-  const config = deps.loadConfig();
-  // The lock is home-global even when agent.json is temporarily unreadable.
-  // Always inspect it after service shutdown so a foreground owner cannot be
-  // left running merely because an installed plist also exists.
-  const owner = deps.readOwner(config?.runnerId ?? "global");
-  if (owner?.processIdentity && deps.ownerLive(owner)) {
-    deps.kill(owner.pid, "SIGTERM");
-    deps.output(`sent SIGTERM to verified runner lock owner pid ${owner.pid}`);
-  } else if (owner && !owner.processIdentity) {
-    deps.output("runner lock owner has no verifiable process identity; refusing to signal its pid");
-    process.exitCode = 1;
-  } else {
-    deps.output("runner is not running (no verified live lock owner)");
-  }
-  if (serviceFailed) process.exitCode = 1;
+  const result = deps.stop();
+  deps.output(result.note);
+  if (!result.ok) process.exitCode = 1;
 }
 
 export function startCommand(): boolean {
   const state = serviceState();
-  if (!state.installed) return false;
-  const result = startService();
+  if (!shouldEnterServiceLifecycle(state.installed, hasUpgradeTransition())) return false;
+  const result = startServiceWithMaintenance();
   log(result.note);
   if (!result.ok) process.exitCode = 1;
   return true;
 }
 
+export function shouldEnterServiceLifecycle(
+  serviceInstalled: boolean,
+  transitionPending: boolean,
+): boolean {
+  return serviceInstalled || transitionPending;
+}
+
 export function serviceCommand(action: string | undefined, version: string): void {
   const result =
-    action === "install" || action === "repair"
-      ? installService(version)
+    action === "repair"
+      ? upgradeAgent(version)
+      : action === "install"
+        ? ensureServiceInstalledWithMaintenance(version)
       : action === "uninstall"
-        ? uninstallService()
+        ? uninstallServiceWithMaintenance()
         : null;
   if (action === "status") {
     statusCommand(false);
