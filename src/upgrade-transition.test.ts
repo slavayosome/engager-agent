@@ -300,8 +300,10 @@ describe("durable upgrade transition", () => {
         alive: (pid: number) => pid === process.pid,
       };
       const maintenance = acquireMaintenanceLock("recovery", identity);
+      const lint = vi.fn(() => ({ status: 0, out: "" }));
       const runtime: ServiceTransitionRuntimeDeps = {
         platform: "darwin",
+        lint,
         launch: (command) => {
           calls.push(command);
           if (command === "bootout") loaded = false;
@@ -353,6 +355,7 @@ describe("durable upgrade transition", () => {
       expect(loaded).toBe(true);
       expect(disabled).toBe(false);
       expect(calls).toContain("bootstrap");
+      expect(lint).toHaveBeenCalledOnce();
       expect(hasUpgradeTransition()).toBe(false);
       expect(readFileSync(plistPath(), "utf8")).not.toContain(
         "ENGAGER_AGENT_MAINTENANCE_TOKEN",
@@ -437,6 +440,7 @@ describe("durable upgrade transition", () => {
       acquireBarrier: () => ({ release: vi.fn() }),
       runtime: {
         platform: "darwin",
+        lint: () => ({ status: 0, out: "" }),
         launch: (command) => {
           calls.push(command);
           if (command === "disable") disabled = true;
@@ -504,6 +508,7 @@ describe("durable upgrade transition", () => {
       acquireBarrier: () => ({ release: vi.fn() }),
       runtime: {
         platform: "darwin",
+        lint: () => ({ status: 0, out: "" }),
         launch: (command) => {
           calls.push(command);
           if (command === "disable") disabled = true;
@@ -580,6 +585,7 @@ describe("durable upgrade transition", () => {
       const calls: string[] = [];
       const runtime: ServiceTransitionRuntimeDeps = {
         platform: "darwin",
+        lint: () => ({ status: 0, out: "" }),
         launch: (command) => {
           calls.push(command);
           if (command === "bootout") loaded = false;

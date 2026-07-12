@@ -845,6 +845,7 @@ export type ServiceTransitionRecoveryResult = {
 export type ServiceTransitionRuntimeDeps = {
   platform: NodeJS.Platform;
   launch: (...args: string[]) => { status: number | null; out: string };
+  lint: (path: string) => { status: number | null; out: string };
   state: () => ServiceState;
   disabled: () => boolean | null;
   wait: typeof waitForServiceLoad;
@@ -856,6 +857,7 @@ export type ServiceTransitionRuntimeDeps = {
 const REAL_TRANSITION_RUNTIME: ServiceTransitionRuntimeDeps = {
   platform: process.platform,
   launch: launchctl,
+  lint: plutilLint,
   state: serviceState,
   disabled: serviceDisabledState,
   wait: waitForServiceLoad,
@@ -938,7 +940,7 @@ export function reconcileServiceUpgradeTransition(options: {
         plistWithMaintenanceToken(priorPlist, options.maintenanceToken),
         { mode: 0o600 },
       );
-      const lint = plutilLint(tmp);
+      const lint = runtime.lint(tmp);
       if (lint.status !== 0) {
         throw new Error(`recovery plist failed lint: ${lint.out.trim()}`);
       }
