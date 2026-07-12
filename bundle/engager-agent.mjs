@@ -13100,6 +13100,7 @@ function restartUntouchedPriorService(transition, maintenanceToken, acquireBarri
 var REAL_TRANSITION_RUNTIME = {
   platform: process.platform,
   launch: launchctl,
+  lint: plutilLint,
   state: serviceState,
   disabled: serviceDisabledState,
   wait: waitForServiceLoad,
@@ -13175,7 +13176,7 @@ function reconcileServiceUpgradeTransition(options = {}) {
         plistWithMaintenanceToken(priorPlist, options.maintenanceToken),
         { mode: 384 }
       );
-      const lint = plutilLint(tmp);
+      const lint = runtime.lint(tmp);
       if (lint.status !== 0) {
         throw new Error(`recovery plist failed lint: ${lint.out.trim()}`);
       }
