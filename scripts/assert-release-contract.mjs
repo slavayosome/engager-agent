@@ -122,6 +122,16 @@ if (contract.RunnerSubmitBatchInputSchema.safeParse(securityProbe).success) {
   );
 }
 
+const bundleFresh = spawnSync(
+  process.execPath,
+  [resolve(new URL("..", import.meta.url).pathname, "scripts/assert-bundle-fresh.mjs")],
+  { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+);
+if (bundleFresh.status !== 0) {
+  fail(bundleFresh.stderr.trim() || bundleFresh.stdout.trim() || "checked-in bundle freshness verification failed");
+}
+process.stdout.write(bundleFresh.stdout);
+
 process.stdout.write(
   `runner contract verified: ${pin.packageVersion} / protocol ${pin.protocolVersion} / ${spec === vendorSpec ? pin.sha256 : "registry pin"}\n`,
 );

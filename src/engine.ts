@@ -14,7 +14,7 @@ import {
   engineConfigEnvironmentName,
   isSafeEngineConfigDir,
 } from "./config.js";
-import { RUNNER_ERROR_CODES, RunnerFault, type RunnerErrorCode } from "./errors.js";
+import { isRunnerErrorCode, RunnerFault } from "./errors.js";
 import type { AgentProposal } from "./protocol.js";
 
 export type EngineName = "claude" | "codex";
@@ -550,10 +550,7 @@ function isProcessResult(value: unknown): value is ProcessResult {
 
 function deserializeFault(value: unknown): RunnerFault {
   if (!isRecord(value)) return watchdogFault("engine watchdog returned an invalid failure");
-  const code =
-    typeof value.code === "string" && RUNNER_ERROR_CODES.includes(value.code as RunnerErrorCode)
-      ? (value.code as RunnerErrorCode)
-      : "ENGINE_FAILED";
+  const code = isRunnerErrorCode(value.code) ? value.code : "ENGINE_FAILED";
   return new RunnerFault(
     code,
     typeof value.message === "string" ? value.message : "engine watchdog reported a failure",

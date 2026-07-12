@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { agentHome } from "./config.js";
+import { hasDisconnectTransition } from "./disconnect-transition.js";
 import { RunnerFault } from "./errors.js";
 import { pidAlive } from "./status.js";
 import { hasUpgradeTransition } from "./upgrade-transition.js";
@@ -150,7 +151,7 @@ function assertMaintenanceAccess(
   maintenanceToken?: string,
 ): void {
   const inspection = inspectOwner(maintenanceLockPath());
-  const transitionPending = hasUpgradeTransition();
+  const transitionPending = hasUpgradeTransition() || hasDisconnectTransition();
   if (inspection.state === "invalid") {
     throw invalidLockFault("maintenance lock", inspection.detail);
   }
@@ -196,7 +197,7 @@ function transitionRecoveryFault(): RunnerFault {
     "an interrupted service transition requires deterministic recovery",
     {
       impact: "This process did not poll, claim, or execute work against an ambiguous runtime payload.",
-      recovery: "Run `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start` to reconcile it.",
+      recovery: "Run `engager-agent disconnect` for a disconnect transition, or `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start` for an upgrade transition.",
       retryable: true,
     },
   );

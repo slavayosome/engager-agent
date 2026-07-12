@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { RunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
+import { RUNNER_ERROR_CATALOG, RUNNER_ERROR_CODES, RunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
 
 describe("terminal-safe runner errors", () => {
+  it("keeps the stable CLI catalog exhaustive and directly keyed by the exported codes", () => {
+    expect(Object.keys(RUNNER_ERROR_CATALOG)).toEqual([...RUNNER_ERROR_CODES]);
+    for (const code of RUNNER_ERROR_CODES) {
+      expect(RUNNER_ERROR_CATALOG[code].summary).toBeTruthy();
+      expect(RUNNER_ERROR_CATALOG[code].defaultRecovery).toBeTruthy();
+    }
+  });
   it("flattens ANSI, OSC, forged lines, bidi, and invisible controls", () => {
     const hostile = "first\n[FAKE] second\u001b[31m red\u001b[0m\u001b]0;owned\u0007\u009b31mblue\u009d0;owned\u009c\u202e\u200b";
     const safe = sanitizeTerminalText(hostile);

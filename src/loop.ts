@@ -3,14 +3,15 @@ import type { RunnerWorkPurpose } from "@engager/runner-contract";
 import { isEngineReady, type AgentEngine, type EngineDetection } from "./engine.js";
 import { engineFor } from "./engines/index.js";
 import { executeOneClaim, type ExecutionOutcome } from "./executor.js";
-import { RunnerFault, asRunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
+import { RunnerFault, asRunnerFault, formatRunnerFault, isRunnerErrorCode, sanitizeTerminalText } from "./errors.js";
 import { connectAndNegotiate, controlPoll, type HeartbeatState } from "./heartbeat.js";
-import { log } from "./log.js";
+import { log, logEvent, logFaultEvent } from "./log.js";
 import { readJournal } from "./journal.js";
 import { clearHalt, readHalt, readPause, writeHalt } from "./markers.js";
 import { readStatus, writeStatus, type CycleInfo, type RunnerState } from "./status.js";
 import { providerSessionsToday } from "./session-usage.js";
 import { readUpgradeTransition } from "./upgrade-transition.js";
+import { disconnectTransitionBlockReason, readDisconnectTransition } from "./disconnect-transition.js";
 
 export const MAX_CONSECUTIVE_FAILURES = 3;
 const CONTROL_POLL_MS = 5 * 60_000;
@@ -335,7 +336,7 @@ export type UpgradeCommitWaitDeps = {
 };
 
 const REAL_UPGRADE_COMMIT_WAIT_DEPS: UpgradeCommitWaitDeps = {
-  pending: () => readUpgradeTransition() != null,
+  pending: () => readUpgradeTransition() != null || readDisconnectTransition() != null,
   now: Date.now,
   pause: sleep,
 };
@@ -351,14 +352,14 @@ export async function waitForUpgradeTransitionCommit(
     } catch (error) {
       return {
         ok: false,
-        reason: `upgrade transition journal became unsafe: ${error instanceof Error ? error.message : String(error)}`,
+        reason: `lifecycle transition journal became unsafe: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
     const remaining = deadline - deps.now();
     if (remaining <= 0) {
       return {
         ok: false,
-        reason: "upgrade transition was not committed before the maintenance handoff timeout",
+        reason: "lifecycle transition was not committed before the maintenance handoff timeout",
       };
     }
     await deps.pause(Math.min(100, remaining));
@@ -439,11 +440,11 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
     log(`HALTED: ${reason} — run \`engager-agent doctor\`, then \`engager-agent resume\``);
     process.exit(service ? 0 : 1);
   };
-  const stopForUpgradeTransition = async (reason: string): Promise<void> => {
+  const stopForLifecycleTransition = async (reason: string): Promise<void> => {
     lastCycle = upgradeHandoffStoppedCycle(reason);
     put("stopped", reason);
     await safeTerminalHeartbeat("stopped", reason);
-    log(`upgrade transition fenced runner safely: ${reason}`);
+    log(`lifecycle transition fenced runner safely: ${reason}`);
   };
 
   const existingHalt = readHalt();
@@ -471,9 +472,9 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
       process.exit(0);
     }
     if (!maintenanceHandoff) {
-      const transitionReason = upgradeTransitionBlockReason();
+      const transitionReason = lifecycleTransitionBlockReason();
       if (transitionReason) {
-        await stopForUpgradeTransition(transitionReason);
+        await stopForLifecycleTransition(transitionReason);
         return;
       }
     }
@@ -501,7 +502,7 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
         {
           allowWork: !pause && !maintenanceHandoff,
           readinessOnly: maintenanceHandoff,
-          executionFence: () => readUpgradeTransition() == null,
+          executionFence: () => readUpgradeTransition() == null && readDisconnectTransition() == null,
           signal: activeAbort.signal,
           onNegotiated: (
             negotiatedProtocol,
@@ -535,6 +536,17 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
       quotaState = result.quotaState;
       const outcome = result.outcome;
       lastCycle = cycleInfoFromOutcome(outcome);
+      if (!outcome.ok) {
+        logEvent({
+          event: "cycle.fault",
+          level: "warn",
+          runnerId: config.runnerId,
+          ...(isRunnerErrorCode(outcome.errorCode) ? { code: outcome.errorCode } : {}),
+          ...(outcome.workOrderId ? { workOrderId: outcome.workOrderId } : {}),
+          ...(outcome.lane ? { lane: outcome.lane } : {}),
+          detail: outcome.note,
+        });
+      }
       if (outcome.fatal) await halt(outcome.note);
       if (outcome.ok) consecutiveFailures = 0;
       else if (countsTowardHalt(outcome.errorCode)) consecutiveFailures += 1;
@@ -542,6 +554,11 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
       log(`${outcome.ok ? "cycle ok" : "cycle idle/failure"}: ${outcome.note}`);
     } catch (error) {
       const fault = asRunnerFault(error);
+      logFaultEvent("cycle.fault", fault, {
+        runnerId: config.runnerId,
+        ...(lastCycle?.workOrderId ? { workOrderId: lastCycle.workOrderId } : {}),
+        ...(lastCycle?.lane ? { lane: lastCycle.lane } : {}),
+      });
       lastCycle = {
         at: Date.now(),
         ran: false,
@@ -569,12 +586,12 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
         return;
       }
       maintenanceHandoff = false;
-      log("upgrade transition committed — normal work is now enabled");
+      log("lifecycle transition committed — normal work is now enabled");
       continue;
     }
-    const transitionReason = upgradeTransitionBlockReason();
+    const transitionReason = lifecycleTransitionBlockReason();
     if (transitionReason) {
-      await stopForUpgradeTransition(transitionReason);
+      await stopForLifecycleTransition(transitionReason);
       return;
     }
     if (stopping) continue;
@@ -678,6 +695,10 @@ export function upgradeTransitionBlockReason(): string | null {
   } catch (error) {
     return `upgrade transition journal is unsafe: ${error instanceof Error ? error.message : String(error)}`;
   }
+}
+
+export function lifecycleTransitionBlockReason(): string | null {
+  return disconnectTransitionBlockReason() ?? upgradeTransitionBlockReason();
 }
 
 function activeQuotaBlock(value: Record<string, unknown> | undefined): Record<string, unknown> | null {

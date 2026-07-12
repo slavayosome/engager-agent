@@ -1,4 +1,5 @@
-import { loadConfig } from "./config.js";
+import { loadConfig, sameConfigSnapshot } from "./config.js";
+import { hasDisconnectTransition } from "./disconnect-transition.js";
 import { inspectJournal, type JournalInspection } from "./journal.js";
 import {
   acquireMaintenanceLock,
@@ -92,10 +93,12 @@ export function upgradeAgent(
   version: string,
   deps: UpgradeDeps = REAL_UPGRADE_DEPS,
 ): UpgradeResult {
-  const config = deps.load();
+  const disconnectBlock = disconnectLifecycleBlock();
+  if (disconnectBlock) return disconnectBlock;
+  const configSnapshot = deps.load();
   let maintenance: RunnerLock;
   try {
-    maintenance = deps.maintenance(config?.runnerId ?? "global");
+    maintenance = deps.maintenance(configSnapshot?.runnerId ?? "global");
   } catch (error) {
     return {
       ok: false,
@@ -103,6 +106,11 @@ export function upgradeAgent(
     };
   }
   try {
+    const disconnectInsideMaintenance = disconnectLifecycleBlock();
+    if (disconnectInsideMaintenance) return disconnectInsideMaintenance;
+    const config = deps.load();
+    const configBlock = changedConfigSnapshotBlock("upgrade", configSnapshot, config);
+    if (configBlock) return configBlock;
     const preflightOwner = deps.owner(config?.runnerId ?? "global");
     if (preflightOwner.state === "invalid") {
       return unsafeLifecycleOwner(preflightOwner.detail);
@@ -254,10 +262,12 @@ export function upgradeAgent(
 export function recoverInterruptedUpgrade(
   deps: UpgradeDeps = REAL_UPGRADE_DEPS,
 ): UpgradeResult & { recovered?: boolean } {
-  const config = deps.load();
+  const disconnectBlock = disconnectLifecycleBlock();
+  if (disconnectBlock) return disconnectBlock;
+  const configSnapshot = deps.load();
   let maintenance: RunnerLock;
   try {
-    maintenance = deps.maintenance(config?.runnerId ?? "global");
+    maintenance = deps.maintenance(configSnapshot?.runnerId ?? "global");
   } catch (error) {
     return {
       ok: false,
@@ -265,6 +275,11 @@ export function recoverInterruptedUpgrade(
     };
   }
   try {
+    const disconnectInsideMaintenance = disconnectLifecycleBlock();
+    if (disconnectInsideMaintenance) return disconnectInsideMaintenance;
+    const config = deps.load();
+    const configBlock = changedConfigSnapshotBlock("recovery", configSnapshot, config);
+    if (configBlock) return configBlock;
     const owner = deps.owner(config?.runnerId ?? "global");
     if (owner.state === "invalid") return unsafeLifecycleOwner(owner.detail);
     return reconcileUnderMaintenance(
@@ -281,13 +296,15 @@ export function installServiceWithMaintenance(
   version: string,
   deps: UpgradeDeps = REAL_UPGRADE_DEPS,
 ): UpgradeResult {
-  const config = deps.load();
-  if (!config) {
+  const disconnectBlock = disconnectLifecycleBlock();
+  if (disconnectBlock) return disconnectBlock;
+  const configSnapshot = deps.load();
+  if (!configSnapshot) {
     return { ok: false, note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` first" };
   }
   let maintenance: RunnerLock;
   try {
-    maintenance = deps.maintenance(config.runnerId);
+    maintenance = deps.maintenance(configSnapshot.runnerId);
   } catch (error) {
     return {
       ok: false,
@@ -295,6 +312,12 @@ export function installServiceWithMaintenance(
     };
   }
   try {
+    const disconnectInsideMaintenance = disconnectLifecycleBlock();
+    if (disconnectInsideMaintenance) return disconnectInsideMaintenance;
+    const config = deps.load();
+    const configBlock = changedConfigSnapshotBlock("service install", configSnapshot, config);
+    if (configBlock) return configBlock;
+    if (!config) return { ok: false, note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` first" };
     const owner = deps.owner(config.runnerId);
     if (owner.state === "invalid") return unsafeLifecycleOwner(owner.detail);
     const recovery = reconcileUnderMaintenance(deps, config.runnerId, maintenance);
@@ -537,6 +560,32 @@ export function resumeAgentWithMaintenance(
   });
 }
 
+export function pauseAgentWithMaintenance(
+  applyLocalPause: () => void,
+  deps: UpgradeDeps = REAL_UPGRADE_DEPS,
+): UpgradeResult {
+  return withLifecycleMaintenance("pause", deps, (config) => {
+    if (!config) {
+      return { ok: false, note: "RUNNER_NOT_CONFIGURED: no connected runner is available to pause" };
+    }
+    const state = deps.service();
+    const ownerInspection = deps.owner(config.runnerId);
+    if (ownerInspection.state === "invalid") return unsafeLifecycleOwner(ownerInspection.detail);
+    const owner = ownerInspection.state === "valid" ? ownerInspection.owner : null;
+    if (
+      state.loaded &&
+      (!owner || state.pid !== owner.pid || !deps.ownerLive(owner))
+    ) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: loaded service ownership could not be verified before pause",
+      };
+    }
+    applyLocalPause();
+    return { ok: true, note: "local claims paused under lifecycle maintenance" };
+  });
+}
+
 export function stopAgentWithMaintenance(
   deps: UpgradeDeps = REAL_UPGRADE_DEPS,
 ): UpgradeResult {
@@ -630,8 +679,10 @@ function withLifecycleMaintenance(
   deps: UpgradeDeps,
   mutate: (config: ReturnType<typeof loadConfig>, maintenance: RunnerLock) => UpgradeResult,
 ): UpgradeResult {
-  const config = deps.load();
-  const runnerId = config?.runnerId ?? "global";
+  const disconnectBlock = disconnectLifecycleBlock();
+  if (disconnectBlock) return disconnectBlock;
+  const configSnapshot = deps.load();
+  const runnerId = configSnapshot?.runnerId ?? "global";
   let maintenance: RunnerLock;
   try {
     maintenance = deps.maintenance(runnerId);
@@ -642,6 +693,11 @@ function withLifecycleMaintenance(
     };
   }
   try {
+    const disconnectInsideMaintenance = disconnectLifecycleBlock();
+    if (disconnectInsideMaintenance) return disconnectInsideMaintenance;
+    const config = deps.load();
+    const configBlock = changedConfigSnapshotBlock(action, configSnapshot, config);
+    if (configBlock) return configBlock;
     const owner = deps.owner(runnerId);
     if (owner.state === "invalid") return unsafeLifecycleOwner(owner.detail);
     const recovery = reconcileUnderMaintenance(deps, runnerId, maintenance);
@@ -654,6 +710,35 @@ function withLifecycleMaintenance(
     };
   } finally {
     maintenance.release();
+  }
+}
+
+function changedConfigSnapshotBlock(
+  action: string,
+  before: ReturnType<typeof loadConfig>,
+  after: ReturnType<typeof loadConfig>,
+): UpgradeResult | null {
+  return sameConfigSnapshot(before, after)
+    ? null
+    : {
+        ok: false,
+        note: `UPGRADE_BLOCKED: ${action} observed a changed runner configuration after acquiring maintenance; no stale lifecycle mutation was applied`,
+      };
+}
+
+function disconnectLifecycleBlock(): UpgradeResult | null {
+  try {
+    return hasDisconnectTransition()
+      ? {
+          ok: false,
+          note: "DISCONNECT_PENDING: lifecycle changes are fenced; rerun `engager-agent disconnect` to recover or finish teardown",
+        }
+      : null;
+  } catch {
+    return {
+      ok: false,
+      note: "DISCONNECT_PENDING: disconnect-transition.json is unsafe; preserve it and run `engager-agent doctor`",
+    };
   }
 }
 

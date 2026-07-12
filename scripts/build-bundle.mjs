@@ -1,33 +1,48 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 
-await build({
-  entryPoints: [new URL("../src/cli.ts", import.meta.url).pathname],
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "node20",
-  outfile: new URL("../bundle/engager-agent.mjs", import.meta.url).pathname,
-  metafile: true,
-  define: {
-    __ENGAGER_AGENT_VERSION__: JSON.stringify(pkg.version),
-  },
-}).then((result) => {
-  const path = new URL("../bundle/esbuild-meta.json", import.meta.url);
-  return import("node:fs").then(({ writeFileSync }) =>
-    writeFileSync(path, JSON.stringify(result.metafile)),
-  );
-});
+/** Single build definition used by both release builds and the checked-in
+ * source-to-bundle freshness verifier. */
+export async function buildBundles(options = {}) {
+  const outdir = resolve(options.outdir ?? join(root, "bundle"));
+  const releaseAssets = options.releaseAssets ?? true;
+  mkdirSync(outdir, { recursive: true, mode: 0o755 });
+  const result = await build({
+    entryPoints: [join(root, "src", "cli.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node20",
+    outfile: join(outdir, "engager-agent.mjs"),
+    metafile: releaseAssets,
+    define: {
+      __ENGAGER_AGENT_VERSION__: JSON.stringify(pkg.version),
+    },
+  });
 
-await build({
-  entryPoints: [new URL("../src/engine-watchdog.ts", import.meta.url).pathname],
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "node20",
-  outfile: new URL("../bundle/engine-watchdog.mjs", import.meta.url).pathname,
-});
+  await build({
+    entryPoints: [join(root, "src", "engine-watchdog.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node20",
+    outfile: join(outdir, "engine-watchdog.mjs"),
+  });
 
-await import("./generate-third-party-notices.mjs");
+  if (releaseAssets) {
+    writeFileSync(join(outdir, "esbuild-meta.json"), JSON.stringify(result.metafile));
+    if (outdir !== join(root, "bundle")) {
+      throw new Error("release notices may be generated only for the canonical bundle directory");
+    }
+    await import(`./generate-third-party-notices.mjs?build=${Date.now()}`);
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await buildBundles();
+}

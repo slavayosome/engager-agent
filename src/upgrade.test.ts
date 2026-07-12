@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentConfig } from "./config.js";
+import { credentialFingerprint, writeDisconnectTransition } from "./disconnect-transition.js";
 import type { JournalInspection } from "./journal.js";
 import type { LockOwner } from "./lock.js";
 import type { InstalledPayload, ServiceState } from "./service.js";
 import {
   ensureServiceInstalledWithMaintenance,
   installServiceWithMaintenance,
+  pauseAgentWithMaintenance,
+  recoverInterruptedUpgrade,
   resumeAgentWithMaintenance,
   startServiceWithMaintenance,
   stopAgentWithMaintenance,
@@ -112,6 +118,98 @@ function fixture(overrides: Partial<UpgradeDeps> = {}) {
 }
 
 describe("upgrade command", () => {
+  it("fails every upgrade and service lifecycle entry point closed during disconnect", () => {
+    const prior = process.env.ENGAGER_AGENT_HOME;
+    process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-upgrade-disconnect-fence-"));
+    try {
+      writeDisconnectTransition({
+        schemaVersion: 1,
+        protocolVersion: 1,
+        phase: "prepared",
+        createdAt: 1,
+        clientRequestId: "11111111-1111-4111-8111-111111111111",
+        mcpUrl: config.mcpUrl,
+        runnerId: config.runnerId,
+        credentialFingerprint: credentialFingerprint(config.apiKey),
+        priorService: { supported: true, installed: true, entryExists: true, loaded: false, disabled: true },
+      });
+      const test = fixture();
+      const results = [
+        upgradeAgent("0.9.1", test.deps),
+        recoverInterruptedUpgrade(test.deps),
+        installServiceWithMaintenance("0.9.1", test.deps),
+        ensureServiceInstalledWithMaintenance("0.9.1", test.deps),
+        startServiceWithMaintenance(test.deps),
+        resumeAgentWithMaintenance(vi.fn(), test.deps),
+        stopAgentWithMaintenance(test.deps),
+        uninstallServiceWithMaintenance(test.deps),
+      ];
+      for (const result of results) {
+        expect(result).toMatchObject({ ok: false, note: expect.stringContaining("DISCONNECT_PENDING") });
+      }
+      expect(test.maintenance).not.toHaveBeenCalled();
+      expect(test.stage).not.toHaveBeenCalled();
+    } finally {
+      if (prior === undefined) delete process.env.ENGAGER_AGENT_HOME;
+      else process.env.ENGAGER_AGENT_HOME = prior;
+    }
+  });
+
+  it("rechecks the disconnect fence after acquiring maintenance to close the start race", () => {
+    const prior = process.env.ENGAGER_AGENT_HOME;
+    process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-upgrade-disconnect-race-"));
+    try {
+      const test = fixture();
+      const acquire = test.deps.maintenance;
+      test.deps.maintenance = (runnerId) => {
+        writeDisconnectTransition({
+          schemaVersion: 1,
+          protocolVersion: 1,
+          phase: "prepared",
+          createdAt: 1,
+          clientRequestId: "11111111-1111-4111-8111-111111111111",
+          mcpUrl: config.mcpUrl,
+          runnerId: config.runnerId,
+          credentialFingerprint: credentialFingerprint(config.apiKey),
+          priorService: { supported: true, installed: true, entryExists: true, loaded: false, disabled: true },
+        });
+        return acquire(runnerId);
+      };
+      expect(upgradeAgent("0.9.1", test.deps)).toMatchObject({
+        ok: false,
+        note: expect.stringContaining("DISCONNECT_PENDING"),
+      });
+      expect(test.stage).not.toHaveBeenCalled();
+      expect(test.release).toHaveBeenCalledOnce();
+    } finally {
+      if (prior === undefined) delete process.env.ENGAGER_AGENT_HOME;
+      else process.env.ENGAGER_AGENT_HOME = prior;
+    }
+  });
+
+  it("does not upgrade from a config snapshot removed while waiting for maintenance", () => {
+    let reads = 0;
+    const test = fixture({ load: () => (++reads === 1 ? config : null) });
+    expect(upgradeAgent("0.9.1", test.deps)).toMatchObject({
+      ok: false,
+      note: expect.stringContaining("changed runner configuration"),
+    });
+    expect(test.stage).not.toHaveBeenCalled();
+    expect(test.release).toHaveBeenCalledOnce();
+  });
+
+  it("does not apply a lifecycle callback from a stale pre-disconnect snapshot", () => {
+    let reads = 0;
+    const apply = vi.fn();
+    const test = fixture({ load: () => (++reads === 1 ? config : null) });
+    expect(pauseAgentWithMaintenance(apply, test.deps)).toMatchObject({
+      ok: false,
+      note: expect.stringContaining("changed runner configuration"),
+    });
+    expect(apply).not.toHaveBeenCalled();
+    expect(test.release).toHaveBeenCalledOnce();
+  });
+
   it("refuses an active foreground runner before staging", () => {
     const owner: LockOwner = {
       pid: 42,

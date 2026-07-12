@@ -14,14 +14,17 @@ import {
 import {
   loadConfig,
   loadPartialConfig,
+  sameConfigSnapshot,
   saveConfig,
 } from "./config.js";
 import { runDoctor } from "./doctor.js";
-import { asRunnerFault, formatRunnerFault } from "./errors.js";
+import { disconnectAgentWithProgress } from "./disconnect.js";
+import { disconnectTransitionBlockReason, type DisconnectSafeProgress } from "./disconnect-transition.js";
+import { RUNNER_ERROR_CATALOG, RUNNER_ERROR_CODES, RunnerFault, asRunnerFault, formatRunnerFault, isRunnerErrorCode, sanitizeSensitiveText } from "./errors.js";
 import { controlPoll } from "./heartbeat.js";
 import { clearJournal } from "./journal.js";
 import { acquireRunnerLock, MAINTENANCE_TOKEN_ENV } from "./lock.js";
-import { log } from "./log.js";
+import { log, logEvent, logFaultEvent, redactionSecrets } from "./log.js";
 import {
   MAX_CONSECUTIVE_FAILURES,
   countsTowardHalt,
@@ -48,6 +51,8 @@ export const USAGE = `engager-agent — least-privilege Engager runner
                                         guided engine detection + browser authorization
   engager-agent status [--json]         local runner, protocol, quota, receipt health
   engager-agent doctor [--json]         read-only engine/auth/server/service diagnostics
+  engager-agent disconnect [--json]     owner-approved revocation + crash-safe local teardown
+  engager-agent errors [--json]         stable runner error-code catalog
   engager-agent run                     foreground control loop
   engager-agent run --once              claim at most one server-authored work order
   engager-agent service install         install verified versioned launchd payload (macOS)
@@ -104,6 +109,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     case "setup":
     case "config":
+      refuseDuringDisconnect("setup");
       const setupProofOrganizationId = setupProofOrganizationIdFromArgs(argv);
       await runWizard(loadConfig() ?? loadPartialConfig() ?? undefined, {
         reauthorize: has("--reauthorize"),
@@ -125,6 +131,52 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       if (!report.ok) process.exitCode = 1;
       return;
     }
+    case "disconnect": {
+      let lastChallenge = "";
+      const onProgress = (progress: DisconnectSafeProgress): void => {
+        const identity = `${progress.phase}:${progress.requestId ?? ""}`;
+        if (identity === lastChallenge) return;
+        lastChallenge = identity;
+        if (has("--json")) {
+          process.stdout.write(`${JSON.stringify({ event: "disconnect_progress", ...progress })}\n`);
+        } else if (progress.verificationUri && progress.userCode) {
+          process.stdout.write(
+            `Approve runner disconnect at:\n  ${progress.verificationUri}\nCode: ${progress.userCode}\n` +
+            "The runner is quiesced and will remain fail-closed. If interrupted, rerun `engager-agent disconnect`.\n",
+          );
+        }
+      };
+      try {
+        const result = await disconnectAgentWithProgress(onProgress);
+        if (has("--json")) process.stdout.write(`${JSON.stringify(result)}\n`);
+        else process.stdout.write(`Runner disconnected. Receipt ${result.receiptId}. Local credential and service state were removed.\n`);
+      } catch (error) {
+        if (!has("--json")) throw error;
+        const fault = asRunnerFault(error);
+        const secrets = redactionSecrets();
+        const safe = (value: string): string => sanitizeSensitiveText(value, secrets);
+        logFaultEvent("cli.fault", fault);
+        process.stdout.write(`${JSON.stringify({
+          ok: false,
+          error: {
+            code: fault.code,
+            message: safe(fault.message),
+            impact: safe(fault.impact),
+            recovery: safe(fault.recovery),
+            retryable: fault.retryable,
+            reference: safe(fault.reference),
+          },
+        })}\n`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    case "errors": {
+      const entries = RUNNER_ERROR_CODES.map((code) => ({ code, ...RUNNER_ERROR_CATALOG[code] }));
+      if (has("--json")) process.stdout.write(`${JSON.stringify({ schemaVersion: 1, errors: entries }, null, 2)}\n`);
+      else for (const entry of entries) process.stdout.write(`${entry.code}\n  ${entry.summary}\n  Fix: ${entry.defaultRecovery}\n`);
+      return;
+    }
     case "run":
       if (has("--once")) return runOnce();
       return runForeground(has("--service"));
@@ -134,6 +186,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "upgrade": {
       const result = upgradeAgent(AGENT_VERSION);
       log(result.note);
+      logEvent({ event: "upgrade.result", level: result.ok ? "info" : "error", phase: "upgrade", detail: result.note });
       if (!result.ok) process.exitCode = 1;
       return;
     }
@@ -167,33 +220,68 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 }
 
-export async function runForeground(service: boolean): Promise<void> {
-  const config = loadConfig();
-  if (!config) {
+function refuseDuringDisconnect(action: string): void {
+  const reason = disconnectTransitionBlockReason();
+  if (!reason) return;
+  throw new RunnerFault("DISCONNECT_PENDING", `${action} is fenced: ${reason}`, {
+    impact: "No provider detection, authorization, credential replacement, or lifecycle mutation was started.",
+    recovery: "Rerun `engager-agent disconnect` to recover or complete teardown first.",
+    retryable: true,
+  });
+}
+export type RunForegroundDeps = {
+  load: typeof loadConfig;
+  lock: typeof acquireRunnerLock;
+  loop: typeof runLoop;
+  output: typeof log;
+};
+
+const REAL_RUN_FOREGROUND_DEPS: RunForegroundDeps = {
+  load: loadConfig,
+  lock: acquireRunnerLock,
+  loop: runLoop,
+  output: log,
+};
+
+export async function runForeground(
+  service: boolean,
+  deps: RunForegroundDeps = REAL_RUN_FOREGROUND_DEPS,
+): Promise<void> {
+  const snapshot = deps.load();
+  if (!snapshot) {
     if (service) {
-      log("RUNNER_NOT_CONFIGURED: run `engager-agent setup` in a terminal");
+      deps.output("RUNNER_NOT_CONFIGURED: run `engager-agent setup` in a terminal");
       return;
     }
     throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
-  }
-  if (config.pendingSetupProofOrganizationId) {
-    const message =
-      "SETUP_PROOF_PENDING: run `engager-agent run --once` to claim or reconcile the exact setup proof before production polling";
-    if (service) {
-      log(message);
-      return;
-    }
-    throw new Error(message);
   }
   // acquireRunnerLock consumes the one-time token. Capture only the handoff
   // mode first so the verified replacement cannot claim work before commit.
   const maintenanceHandoff =
     service && Boolean(process.env[MAINTENANCE_TOKEN_ENV]);
-  const lock = acquireRunnerLock(config.runnerId);
+  const lock = deps.lock(snapshot.runnerId);
   const release = () => lock.release();
   process.once("exit", release);
   try {
-    await runLoop(config, {
+    const config = deps.load();
+    if (!config || !sameConfigSnapshot(snapshot, config)) {
+      const message = "RUNNER_NOT_CONFIGURED: configuration changed while execution was waiting for its fence; restart from current state";
+      if (service) {
+        deps.output(message);
+        return;
+      }
+      throw configChangedFault();
+    }
+    if (config.pendingSetupProofOrganizationId) {
+      const message =
+        "SETUP_PROOF_PENDING: run `engager-agent run --once` to claim or reconcile the exact setup proof before production polling";
+      if (service) {
+        deps.output(message);
+        return;
+      }
+      throw new Error(message);
+    }
+    await deps.loop(config, {
       service,
       version: AGENT_VERSION,
       maintenanceHandoff,
@@ -218,6 +306,7 @@ export type RunOnceDeps = {
   markHalt: typeof writeHalt;
   sessions: typeof providerSessionsToday;
   output: typeof log;
+  event: typeof logEvent;
 };
 
 const REAL_RUN_ONCE_DEPS: RunOnceDeps = {
@@ -234,24 +323,13 @@ const REAL_RUN_ONCE_DEPS: RunOnceDeps = {
   markHalt: writeHalt,
   sessions: providerSessionsToday,
   output: log,
+  event: logEvent,
 };
 
 export async function runOnce(deps: RunOnceDeps = REAL_RUN_ONCE_DEPS): Promise<void> {
-  const config = deps.load();
-  if (!config) throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
-  const halt = deps.halt();
-  if (halt) throw new Error(`runner is halted (${halt.reason}); run \`engager-agent doctor\`, then \`engager-agent resume\``);
-  const pause = deps.pause();
-  const prior = deps.status();
-  const day = new Date().toISOString().slice(0, 10);
-  let sessionsToday = deps.sessions();
-  let consecutiveFailures = prior?.consecutiveFailures ?? 0;
-  let protocol: "v1" | "2.1" | undefined;
-  let protocolVerifiedAt: number | undefined;
-  let quotaState = prior?.quotaState;
-  let fatal = false;
+  const snapshot = deps.load();
+  if (!snapshot) throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
   let signalReceived: string | null = null;
-  let cycle = prior?.lastCycle;
   const controller = new AbortController();
   const onSignal = (signal: string): void => {
     signalReceived = signal;
@@ -259,10 +337,27 @@ export async function runOnce(deps: RunOnceDeps = REAL_RUN_ONCE_DEPS): Promise<v
   };
   const onTerm = () => onSignal("SIGTERM");
   const onInt = () => onSignal("SIGINT");
+  const lock = deps.lock(snapshot.runnerId);
   process.on("SIGTERM", onTerm);
   process.on("SIGINT", onInt);
-  const lock = deps.lock(config.runnerId);
   try {
+    const config = deps.load();
+    if (!config || !sameConfigSnapshot(snapshot, config)) throw configChangedFault();
+    // Operator intent is authority too. Read it only after this process owns
+    // execution; the previous owner or a serialized pause may have committed
+    // a newer marker while we were waiting for the lock.
+    const halt = deps.halt();
+    if (halt) throw new Error(`runner is halted (${halt.reason}); run \`engager-agent doctor\`, then \`engager-agent resume\``);
+    const pause = deps.pause();
+    const prior = deps.status();
+    const day = new Date().toISOString().slice(0, 10);
+    let sessionsToday = deps.sessions();
+    let consecutiveFailures = prior?.consecutiveFailures ?? 0;
+    let protocol: "v1" | "2.1" | undefined;
+    let protocolVerifiedAt: number | undefined;
+    let quotaState = prior?.quotaState;
+    let fatal = false;
+    let cycle = prior?.lastCycle;
     try {
       const result = await deps.cycle(
         config,
@@ -286,6 +381,17 @@ export async function runOnce(deps: RunOnceDeps = REAL_RUN_ONCE_DEPS): Promise<v
       protocolVerifiedAt = Date.now();
       quotaState = result.quotaState;
       const outcome = result.outcome;
+      if (!outcome.ok) {
+        deps.event({
+          event: "cycle.fault",
+          level: "warn",
+          runnerId: config.runnerId,
+          ...(isRunnerErrorCode(outcome.errorCode) ? { code: outcome.errorCode } : {}),
+          ...(outcome.workOrderId ? { workOrderId: outcome.workOrderId } : {}),
+          ...(outcome.lane ? { lane: outcome.lane } : {}),
+          detail: outcome.note,
+        });
+      }
       if (
         config.pendingSetupProofOrganizationId &&
         isAcceptedSetupProof(outcome)
@@ -301,6 +407,14 @@ export async function runOnce(deps: RunOnceDeps = REAL_RUN_ONCE_DEPS): Promise<v
       else if (countsTowardHalt(outcome.errorCode)) consecutiveFailures += 1;
     } catch (error) {
       const fault = asRunnerFault(error);
+      deps.event({
+        event: "cycle.fault",
+        level: "error",
+        code: fault.code,
+        reference: fault.reference,
+        runnerId: config.runnerId,
+        detail: fault.message,
+      });
       cycle = {
         at: Date.now(),
         ran: false,
@@ -310,7 +424,7 @@ export async function runOnce(deps: RunOnceDeps = REAL_RUN_ONCE_DEPS): Promise<v
       };
       if (faultCountsTowardHalt(fault)) consecutiveFailures += 1;
       quotaState = quotaStateForFault(fault);
-      deps.output(formatRunnerFault(fault));
+      deps.output(formatRunnerFault(fault, redactionSecrets()));
     }
     sessionsToday = deps.sessions();
     const halted = fatal || consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
@@ -367,9 +481,22 @@ export async function runOnce(deps: RunOnceDeps = REAL_RUN_ONCE_DEPS): Promise<v
 
 if (isDirectInvocation()) {
   main().catch((error: unknown) => {
-    log(formatRunnerFault(error));
+    logFaultEvent("cli.fault", error);
+    log(formatRunnerFault(error, redactionSecrets()));
     process.exitCode = 1;
   });
+}
+
+function configChangedFault(): RunnerFault {
+  return new RunnerFault(
+    "RUNNER_NOT_CONFIGURED",
+    "the runner configuration changed while execution was waiting for its lock",
+    {
+      impact: "No control poll, claim, or provider process was started with the stale credential snapshot.",
+      recovery: "Inspect `engager-agent status`; rerun setup only if the machine is not disconnected.",
+      retryable: true,
+    },
+  );
 }
 
 function isDirectInvocation(): boolean {

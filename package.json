@@ -44,6 +44,7 @@
   },
   "scripts": {
     "build": "rm -rf dist bundle && tsc -p tsconfig.build.json && node scripts/build-bundle.mjs",
+    "bundle:check": "node scripts/assert-bundle-fresh.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "node scripts/assert-release-contract.mjs",
     "release:check-tag": "node scripts/assert-release-tag.mjs",

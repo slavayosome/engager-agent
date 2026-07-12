@@ -406,11 +406,11 @@ var require_codegen = __commonJS({
         const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
         return `${varKind} ${this.name}${rhs};` + _n;
       }
-      optimizeNames(names, constants5) {
+      optimizeNames(names, constants6) {
         if (!names[this.name.str])
           return;
         if (this.rhs)
-          this.rhs = optimizeExpr(this.rhs, names, constants5);
+          this.rhs = optimizeExpr(this.rhs, names, constants6);
         return this;
       }
       get names() {
@@ -427,10 +427,10 @@ var require_codegen = __commonJS({
       render({ _n }) {
         return `${this.lhs} = ${this.rhs};` + _n;
       }
-      optimizeNames(names, constants5) {
+      optimizeNames(names, constants6) {
         if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
           return;
-        this.rhs = optimizeExpr(this.rhs, names, constants5);
+        this.rhs = optimizeExpr(this.rhs, names, constants6);
         return this;
       }
       get names() {
@@ -491,8 +491,8 @@ var require_codegen = __commonJS({
       optimizeNodes() {
         return `${this.code}` ? this : void 0;
       }
-      optimizeNames(names, constants5) {
-        this.code = optimizeExpr(this.code, names, constants5);
+      optimizeNames(names, constants6) {
+        this.code = optimizeExpr(this.code, names, constants6);
         return this;
       }
       get names() {
@@ -521,12 +521,12 @@ var require_codegen = __commonJS({
         }
         return nodes.length > 0 ? this : void 0;
       }
-      optimizeNames(names, constants5) {
+      optimizeNames(names, constants6) {
         const { nodes } = this;
         let i = nodes.length;
         while (i--) {
           const n = nodes[i];
-          if (n.optimizeNames(names, constants5))
+          if (n.optimizeNames(names, constants6))
             continue;
           subtractNames(names, n.names);
           nodes.splice(i, 1);
@@ -579,12 +579,12 @@ var require_codegen = __commonJS({
           return void 0;
         return this;
       }
-      optimizeNames(names, constants5) {
+      optimizeNames(names, constants6) {
         var _a;
-        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants5);
-        if (!(super.optimizeNames(names, constants5) || this.else))
+        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants6);
+        if (!(super.optimizeNames(names, constants6) || this.else))
           return;
-        this.condition = optimizeExpr(this.condition, names, constants5);
+        this.condition = optimizeExpr(this.condition, names, constants6);
         return this;
       }
       get names() {
@@ -607,10 +607,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.iteration})` + super.render(opts);
       }
-      optimizeNames(names, constants5) {
-        if (!super.optimizeNames(names, constants5))
+      optimizeNames(names, constants6) {
+        if (!super.optimizeNames(names, constants6))
           return;
-        this.iteration = optimizeExpr(this.iteration, names, constants5);
+        this.iteration = optimizeExpr(this.iteration, names, constants6);
         return this;
       }
       get names() {
@@ -646,10 +646,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
       }
-      optimizeNames(names, constants5) {
-        if (!super.optimizeNames(names, constants5))
+      optimizeNames(names, constants6) {
+        if (!super.optimizeNames(names, constants6))
           return;
-        this.iterable = optimizeExpr(this.iterable, names, constants5);
+        this.iterable = optimizeExpr(this.iterable, names, constants6);
         return this;
       }
       get names() {
@@ -691,11 +691,11 @@ var require_codegen = __commonJS({
         (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNodes();
         return this;
       }
-      optimizeNames(names, constants5) {
+      optimizeNames(names, constants6) {
         var _a, _b;
-        super.optimizeNames(names, constants5);
-        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants5);
-        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants5);
+        super.optimizeNames(names, constants6);
+        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants6);
+        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants6);
         return this;
       }
       get names() {
@@ -996,7 +996,7 @@ var require_codegen = __commonJS({
     function addExprNames(names, from) {
       return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
     }
-    function optimizeExpr(expr, names, constants5) {
+    function optimizeExpr(expr, names, constants6) {
       if (expr instanceof code_1.Name)
         return replaceName(expr);
       if (!canOptimize(expr))
@@ -1011,14 +1011,14 @@ var require_codegen = __commonJS({
         return items;
       }, []));
       function replaceName(n) {
-        const c = constants5[n.str];
+        const c = constants6[n.str];
         if (c === void 0 || names[n.str] !== 1)
           return n;
         delete names[n.str];
         return c;
       }
       function canOptimize(e2) {
-        return e2 instanceof code_1._Code && e2._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants5[c.str] !== void 0);
+        return e2 instanceof code_1._Code && e2._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants6[c.str] !== void 0);
       }
     }
     function subtractNames(names, from) {
@@ -7018,14 +7018,15 @@ import { realpathSync as realpathSync3 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/commands.ts
-import { existsSync as existsSync7, readFileSync as readFileSync8, readdirSync as readdirSync2 } from "node:fs";
-import { join as join9 } from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync9, readdirSync as readdirSync2 } from "node:fs";
+import { join as join10 } from "node:path";
 
 // src/config.ts
 import { randomBytes } from "node:crypto";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 // src/durable.ts
 import { randomUUID } from "node:crypto";
@@ -7135,6 +7136,18 @@ function agentHome() {
 function configPath() {
   return join(agentHome(), "agent.json");
 }
+function disconnectReceiptPathForConfigGeneration() {
+  return join(agentHome(), "disconnect-receipt.json");
+}
+function configPathPresent() {
+  try {
+    lstatSync(configPath());
+    return true;
+  } catch (error2) {
+    if (error2.code === "ENOENT") return false;
+    return true;
+  }
+}
 function normalizeConfig(raw) {
   if (raw.pendingDeviceAck !== void 0 || !raw.mcpUrl || !isSafeMcpUrl(raw.mcpUrl) || !raw.apiKey || raw.credentialProfile !== "runner" || !isValidRunnerId(raw.runnerId)) {
     return null;
@@ -7193,7 +7206,26 @@ function saveConfig(config2) {
   writeConfig(normalized);
 }
 function writeConfig(value) {
+  if (carriesCredential(value)) invalidateDisconnectReceiptBeforeCredentialMint();
   writePrivateJsonDurably(configPath(), value);
+}
+function carriesCredential(value) {
+  return Boolean(
+    value && typeof value === "object" && typeof value.apiKey === "string" && value.apiKey.length > 0
+  );
+}
+function invalidateDisconnectReceiptBeforeCredentialMint() {
+  const path = disconnectReceiptPathForConfigGeneration();
+  try {
+    lstatSync(path);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return;
+    throw error2;
+  }
+  removePathDurably(path);
+}
+function sameConfigSnapshot(left, right) {
+  return isDeepStrictEqual(left ?? null, right ?? null);
 }
 function loadPartialConfig() {
   const path = configPath();
@@ -7273,187 +7305,17 @@ function isPrivateConfig(path) {
   }
 }
 
-// src/errors.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
-var RUNNER_ERROR_CODES = [
-  "AUTH_REVOKED",
-  "ENGINE_NOT_FOUND",
-  "ENGINE_UNSUPPORTED_VERSION",
-  "ENGINE_AUTH_REQUIRED",
-  "ENGINE_QUOTA",
-  "ENGINE_OVERLOADED",
-  "ENGINE_NETWORK",
-  "ENGINE_TIMEOUT",
-  "ENGINE_OUTPUT_INVALID",
-  "ENGINE_SANDBOX_DENIED",
-  "ENGINE_CONTEXT_LIMIT",
-  "ENGINE_FAILED",
-  "CONTRACT_UPGRADE_REQUIRED",
-  "SERVER_UNREACHABLE",
-  "CLOCK_SKEW",
-  "LEASE_LOST",
-  "VALIDATION_REJECTED",
-  "SERVICE_ENTRY_MISSING",
-  "RUNNER_ALREADY_ACTIVE",
-  "RUNNER_NOT_CONFIGURED",
-  "RUNNER_PAUSED",
-  "INTERNAL_ERROR"
-];
-var RunnerFault = class extends Error {
-  code;
-  impact;
-  recovery;
-  retryable;
-  reference;
-  remoteCode;
-  discardJournal;
-  engineAttempted;
-  constructor(code, message, options) {
-    super(message, { cause: options.cause });
-    this.name = "RunnerFault";
-    this.code = code;
-    this.impact = options.impact;
-    this.recovery = options.recovery;
-    this.retryable = options.retryable ?? false;
-    this.reference = options.reference ?? randomUUID2();
-    this.remoteCode = options.remoteCode;
-    this.discardJournal = options.discardJournal ?? false;
-    this.engineAttempted = options.engineAttempted ?? false;
-  }
-};
-function asRunnerFault(error2) {
-  if (error2 instanceof RunnerFault) return error2;
-  const message = error2 instanceof Error ? error2.message : String(error2);
-  return new RunnerFault("INTERNAL_ERROR", message || "runner operation failed", {
-    impact: "The current runner action stopped before it could be verified.",
-    recovery: "Run `engager-agent doctor`; retry only after the reported problem is resolved.",
-    cause: error2
-  });
-}
-function formatRunnerFault(error2) {
-  const fault = asRunnerFault(error2);
-  return [
-    `${fault.code}${fault.remoteCode ? `/${fault.remoteCode}` : ""}: ${sanitizeTerminalText(fault.message)}`,
-    `Impact: ${sanitizeTerminalText(fault.impact)}`,
-    `Fix: ${sanitizeTerminalText(fault.recovery)}`,
-    `Reference: ${sanitizeTerminalText(fault.reference)}`
-  ].join("\n");
-}
-function markEngineAttempted(error2) {
-  const fault = asRunnerFault(error2);
-  return new RunnerFault(fault.code, fault.message, {
-    impact: fault.impact,
-    recovery: fault.recovery,
-    retryable: fault.retryable,
-    reference: fault.reference,
-    cause: fault,
-    ...fault.remoteCode ? { remoteCode: fault.remoteCode } : {},
-    discardJournal: fault.discardJournal,
-    engineAttempted: true
-  });
-}
-function redact(value, secrets) {
-  let safe = value;
-  for (const secret of secrets) {
-    if (secret && secret.length >= 6) safe = safe.split(secret).join("[REDACTED]");
-  }
-  return safe.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
-}
-function sanitizeTerminalText(value) {
-  return value.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\x1b[@-_]/g, "").replace(/\u009d[^\u009c]*(?:\u009c|$)/g, "").replace(/\u009b[0-?]*[ -/]*[@-~]/g, "").replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/gi, "").replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-// src/log.ts
-import { appendFileSync, chmodSync as chmodSync2, mkdirSync as mkdirSync2 } from "node:fs";
-import { join as join2 } from "node:path";
-function log(message) {
-  const now = /* @__PURE__ */ new Date();
-  const line = `[${now.toISOString()}] ${sanitizeTerminalText(message)}`;
-  console.log(line);
-  try {
-    const dir = join2(agentHome(), "logs");
-    mkdirSync2(dir, { recursive: true, mode: 448 });
-    chmodSync2(dir, 448);
-    const path = join2(dir, `${now.toISOString().slice(0, 10)}.log`);
-    appendFileSync(path, line + "\n", { mode: 384 });
-    chmodSync2(path, 384);
-  } catch {
-  }
-}
-
-// src/lock.ts
-import { randomUUID as randomUUID3 } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import {
-  chmodSync as chmodSync4,
-  existsSync as existsSync4,
-  lstatSync as lstatSync3,
-  mkdirSync as mkdirSync4,
-  readFileSync as readFileSync4,
-  renameSync as renameSync2,
-  rmSync as rmSync2,
-  writeFileSync as writeFileSync2
-} from "node:fs";
-import { join as join5 } from "node:path";
-
-// src/status.ts
-import { chmodSync as chmodSync3, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync2 } from "node:fs";
-import { join as join3 } from "node:path";
-function statusPath() {
-  return join3(agentHome(), "status.json");
-}
-function writeStatus(status) {
-  try {
-    mkdirSync3(agentHome(), { recursive: true, mode: 448 });
-    chmodSync3(agentHome(), 448);
-    writePrivateJsonDurably(statusPath(), sanitizeStatus({ ...status, updatedAt: Date.now() }));
-    return true;
-  } catch {
-    return false;
-  }
-}
-function readStatus() {
-  if (!existsSync2(statusPath())) return null;
-  try {
-    const value = JSON.parse(readFileSync2(statusPath(), "utf8"));
-    return value.schemaVersion === 2 && typeof value.pid === "number" ? sanitizeStatus(value) : null;
-  } catch {
-    return null;
-  }
-}
-function sanitizeStatus(status) {
-  return {
-    ...status,
-    ...status.stateReason ? { stateReason: sanitizeTerminalText(status.stateReason).slice(0, 400) } : {},
-    ...status.lastCycle ? {
-      lastCycle: {
-        ...status.lastCycle,
-        note: sanitizeTerminalText(status.lastCycle.note).slice(0, 400)
-      }
-    } : {}
-  };
-}
-function pidAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// src/upgrade-transition.ts
+// src/disconnect-transition.ts
 import { createHash } from "node:crypto";
 import {
   closeSync as closeSync2,
   constants as constants2,
-  existsSync as existsSync3,
   fstatSync,
   lstatSync as lstatSync2,
   openSync as openSync2,
-  readFileSync as readFileSync3
+  readFileSync as readFileSync2
 } from "node:fs";
-import { join as join4 } from "node:path";
+import { join as join2 } from "node:path";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -11496,7 +11358,535 @@ var coerce = {
 };
 var NEVER = INVALID;
 
+// src/disconnect-transition.ts
+var RUNNER_DISCONNECT_PROTOCOL_VERSION = 1;
+var DISCONNECT_TRANSITION_PHASES = [
+  "prepared",
+  "quiesced",
+  "pending",
+  "approved",
+  "acknowledged"
+];
+var Uuid = external_exports.string().uuid();
+var Fingerprint = external_exports.string().regex(/^v2:[a-f0-9]{64}$/);
+var PriorServiceSchema = external_exports.object({
+  supported: external_exports.boolean(),
+  installed: external_exports.boolean(),
+  entryExists: external_exports.boolean(),
+  loaded: external_exports.boolean(),
+  disabled: external_exports.boolean().nullable()
+}).strict().superRefine((value, ctx) => {
+  if (value.loaded && (!value.supported || !value.installed || !value.entryExists || value.disabled == null)) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "loaded prior service is inconsistent" });
+  }
+});
+var DisconnectStartSchema = external_exports.object({
+  protocolVersion: external_exports.literal(RUNNER_DISCONNECT_PROTOCOL_VERSION),
+  status: external_exports.literal("pending"),
+  requestId: Uuid,
+  clientRequestId: Uuid,
+  organizationId: Uuid,
+  runnerId: external_exports.string().min(3).max(200),
+  credentialKeyId: Uuid,
+  credentialFingerprint: Fingerprint,
+  deviceCode: external_exports.string().regex(/^engrd_[A-Za-z0-9_-]{43}$/),
+  userCode: external_exports.string().regex(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/),
+  verificationUri: external_exports.string().url().max(2e3),
+  expiresAt: external_exports.number().int().nonnegative(),
+  intervalSec: external_exports.literal(5)
+}).strict();
+var DisconnectReceiptSchema = external_exports.object({
+  receiptVersion: external_exports.literal(1),
+  receiptId: Uuid,
+  requestId: Uuid,
+  clientRequestId: Uuid,
+  organizationId: Uuid,
+  runnerId: external_exports.string().min(3).max(200),
+  credentialKeyId: Uuid,
+  credentialFingerprint: Fingerprint,
+  credentialWasActive: external_exports.boolean(),
+  credentialRevokedAt: external_exports.number().int().nonnegative(),
+  cancelledWorkOrderIds: external_exports.array(external_exports.string().min(1).max(200)).max(1e4),
+  legacyCancelledWorkOrderIds: external_exports.array(external_exports.string().min(1).max(200)).max(1e4),
+  approvedByUserId: Uuid,
+  approvedAt: external_exports.number().int().nonnegative(),
+  receiptHash: external_exports.string().regex(/^[a-f0-9]{64}$/)
+}).strict();
+var ApprovalSchema = external_exports.object({
+  receipt: DisconnectReceiptSchema,
+  ackToken: external_exports.string().regex(/^engra_[A-Za-z0-9_-]{43}$/)
+}).strict();
+var SanitizedDisconnectReceiptSchema = external_exports.object({
+  schemaVersion: external_exports.literal(1),
+  status: external_exports.literal("acknowledged"),
+  completedAt: external_exports.number().int().nonnegative(),
+  receiptId: Uuid,
+  requestId: Uuid,
+  organizationId: Uuid,
+  runnerId: external_exports.string().min(3).max(200),
+  credentialKeyId: Uuid,
+  credentialRevokedAt: external_exports.number().int().nonnegative(),
+  approvedAt: external_exports.number().int().nonnegative(),
+  receiptHash: external_exports.string().regex(/^[a-f0-9]{64}$/),
+  cancelledWorkOrders: external_exports.number().int().nonnegative(),
+  cancelledLegacyWorkOrders: external_exports.number().int().nonnegative()
+}).strict();
+var DisconnectTransitionSchema = external_exports.object({
+  schemaVersion: external_exports.literal(1),
+  protocolVersion: external_exports.literal(RUNNER_DISCONNECT_PROTOCOL_VERSION),
+  phase: external_exports.enum(DISCONNECT_TRANSITION_PHASES),
+  createdAt: external_exports.number().int().nonnegative(),
+  updatedAt: external_exports.number().int().nonnegative(),
+  clientRequestId: Uuid,
+  mcpUrl: external_exports.string().refine(isSafeMcpUrl, "unsafe MCP URL"),
+  runnerId: external_exports.string().min(3).max(200),
+  credentialFingerprint: Fingerprint,
+  priorService: PriorServiceSchema,
+  start: DisconnectStartSchema.optional(),
+  approval: ApprovalSchema.optional()
+}).strict().superRefine((value, ctx) => {
+  if (value.updatedAt < value.createdAt) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "transition timestamps are reversed" });
+  }
+  const phase = DISCONNECT_TRANSITION_PHASES.indexOf(value.phase);
+  if (phase >= 2 !== (value.start != null)) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "disconnect start binding is incomplete" });
+  }
+  if (phase >= 3 !== (value.approval != null)) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "disconnect approval binding is incomplete" });
+  }
+  if (value.start) {
+    if (value.start.clientRequestId !== value.clientRequestId || value.start.runnerId !== value.runnerId || value.start.credentialFingerprint !== value.credentialFingerprint) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "disconnect start binding mismatch" });
+    }
+  }
+  if (value.start && value.approval) {
+    const receipt = value.approval.receipt;
+    if (receipt.requestId !== value.start.requestId || receipt.clientRequestId !== value.start.clientRequestId || receipt.organizationId !== value.start.organizationId || receipt.runnerId !== value.start.runnerId || receipt.credentialKeyId !== value.start.credentialKeyId || receipt.credentialFingerprint !== value.start.credentialFingerprint) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "disconnect receipt binding mismatch" });
+    }
+  }
+});
+function safeDisconnectProgress(transition) {
+  return {
+    phase: transition.phase,
+    clientRequestId: transition.clientRequestId,
+    runnerId: transition.runnerId,
+    ...transition.start ? {
+      requestId: transition.start.requestId,
+      userCode: transition.start.userCode,
+      verificationUri: transition.start.verificationUri,
+      expiresAt: transition.start.expiresAt
+    } : {},
+    ...transition.approval ? { receiptId: transition.approval.receipt.receiptId } : {}
+  };
+}
+function disconnectReceiptHash(receipt) {
+  return createHash("sha256").update(JSON.stringify(canonical(receipt))).digest("hex");
+}
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, nested]) => [key, canonical(nested)])
+    );
+  }
+  return value;
+}
+function disconnectTransitionPath() {
+  return join2(agentHome(), "disconnect-transition.json");
+}
+function disconnectReceiptPath() {
+  return join2(agentHome(), "disconnect-receipt.json");
+}
+function credentialFingerprint(apiKey) {
+  return `v2:${createHash("sha256").update(apiKey).digest("hex")}`;
+}
+function hasDisconnectTransition() {
+  try {
+    lstatTransition();
+    return true;
+  } catch (error2) {
+    if (error2.code === "ENOENT") return false;
+    throw error2;
+  }
+}
+function lstatTransition() {
+  const fd = openSync2(disconnectTransitionPath(), constants2.O_RDONLY | constants2.O_NOFOLLOW);
+  closeSync2(fd);
+}
+function readDisconnectTransition() {
+  const path = disconnectTransitionPath();
+  let fd;
+  try {
+    fd = openSync2(path, constants2.O_RDONLY | constants2.O_NOFOLLOW);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return null;
+    throw error2;
+  }
+  try {
+    const stat = fstatSync(fd);
+    const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
+    if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
+      throw new Error("disconnect transition journal is not a private 0600 regular file");
+    }
+    if (stat.size > 1e6) throw new Error("disconnect transition journal exceeds 1 MB");
+    return DisconnectTransitionSchema.parse(JSON.parse(readFileSync2(fd, "utf8")));
+  } finally {
+    closeSync2(fd);
+  }
+}
+function readSanitizedDisconnectReceipt() {
+  const path = disconnectReceiptPath();
+  let fd;
+  try {
+    fd = openSync2(path, constants2.O_RDONLY | constants2.O_NOFOLLOW);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return null;
+    throw error2;
+  }
+  try {
+    const stat = fstatSync(fd);
+    const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
+    if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
+      throw new Error("disconnect receipt is not a private 0600 regular file");
+    }
+    if (stat.size > 64 * 1024) throw new Error("disconnect receipt exceeds 64 KiB");
+    return SanitizedDisconnectReceiptSchema.parse(JSON.parse(readFileSync2(fd, "utf8")));
+  } finally {
+    closeSync2(fd);
+  }
+}
+function writeDisconnectTransition(value) {
+  const parsed = DisconnectTransitionSchema.parse({ ...value, updatedAt: value.updatedAt ?? Date.now() });
+  writePrivateJsonDurably(disconnectTransitionPath(), parsed);
+  return parsed;
+}
+function advanceDisconnectTransition(transition, phase, patch = {}) {
+  if (DISCONNECT_TRANSITION_PHASES.indexOf(phase) < DISCONNECT_TRANSITION_PHASES.indexOf(transition.phase)) {
+    throw new Error(`refusing non-monotonic disconnect transition ${transition.phase} -> ${phase}`);
+  }
+  return writeDisconnectTransition({ ...transition, ...patch, phase, updatedAt: Date.now() });
+}
+function clearDisconnectTransition() {
+  const path = disconnectTransitionPath();
+  try {
+    lstatSync2(path);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return;
+    throw error2;
+  }
+  removePathDurably(path);
+}
+function writeSanitizedDisconnectReceipt(transition) {
+  const receipt = transition.approval?.receipt;
+  if (!receipt) throw new Error("disconnect receipt is unavailable");
+  const sanitized = SanitizedDisconnectReceiptSchema.parse({
+    schemaVersion: 1,
+    status: "acknowledged",
+    completedAt: Date.now(),
+    receiptId: receipt.receiptId,
+    requestId: receipt.requestId,
+    organizationId: receipt.organizationId,
+    runnerId: receipt.runnerId,
+    credentialKeyId: receipt.credentialKeyId,
+    credentialRevokedAt: receipt.credentialRevokedAt,
+    approvedAt: receipt.approvedAt,
+    receiptHash: receipt.receiptHash,
+    cancelledWorkOrders: receipt.cancelledWorkOrderIds.length,
+    cancelledLegacyWorkOrders: receipt.legacyCancelledWorkOrderIds.length
+  });
+  writePrivateJsonDurably(disconnectReceiptPath(), sanitized);
+}
+function disconnectTransitionBlockReason() {
+  try {
+    const transition = readDisconnectTransition();
+    return transition ? `runner disconnect is awaiting recovery at phase ${transition.phase}` : null;
+  } catch {
+    return "runner disconnect journal is unsafe or unreadable";
+  }
+}
+
+// src/errors.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+var RUNNER_ERROR_CODES = [
+  "AUTH_REVOKED",
+  "ENGINE_NOT_FOUND",
+  "ENGINE_UNSUPPORTED_VERSION",
+  "ENGINE_AUTH_REQUIRED",
+  "ENGINE_QUOTA",
+  "ENGINE_OVERLOADED",
+  "ENGINE_NETWORK",
+  "ENGINE_TIMEOUT",
+  "ENGINE_OUTPUT_INVALID",
+  "ENGINE_SANDBOX_DENIED",
+  "ENGINE_CONTEXT_LIMIT",
+  "ENGINE_FAILED",
+  "CONTRACT_UPGRADE_REQUIRED",
+  "SERVER_UNREACHABLE",
+  "CLOCK_SKEW",
+  "LEASE_LOST",
+  "VALIDATION_REJECTED",
+  "SERVICE_ENTRY_MISSING",
+  "RUNNER_ALREADY_ACTIVE",
+  "RUNNER_NOT_CONFIGURED",
+  "RUNNER_PAUSED",
+  "DISCONNECT_PENDING",
+  "DISCONNECT_DENIED",
+  "DISCONNECT_EXPIRED",
+  "DISCONNECT_PROTOCOL_ERROR",
+  "DISCONNECT_CLEANUP_REQUIRED",
+  "INTERNAL_ERROR"
+];
+function isRunnerErrorCode(value) {
+  return typeof value === "string" && RUNNER_ERROR_CODES.includes(value);
+}
+var RUNNER_ERROR_CATALOG = {
+  AUTH_REVOKED: { summary: "The runner credential is invalid or revoked.", defaultRecovery: "Reauthorize or complete an in-progress disconnect.", retryable: false },
+  ENGINE_NOT_FOUND: { summary: "The selected provider CLI was not found.", defaultRecovery: "Install the configured provider CLI and rerun setup.", retryable: false },
+  ENGINE_UNSUPPORTED_VERSION: { summary: "The provider CLI version is outside the certified range.", defaultRecovery: "Install a supported provider CLI version.", retryable: false },
+  ENGINE_AUTH_REQUIRED: { summary: "The provider CLI is not authenticated.", defaultRecovery: "Authenticate the provider CLI and rerun doctor.", retryable: false },
+  ENGINE_QUOTA: { summary: "The provider reported an allowance or quota boundary.", defaultRecovery: "Wait for provider allowance to reset.", retryable: true },
+  ENGINE_OVERLOADED: { summary: "The provider is temporarily overloaded.", defaultRecovery: "Retry after the provider recovers.", retryable: true },
+  ENGINE_NETWORK: { summary: "The provider could not be reached safely.", defaultRecovery: "Check provider connectivity and retry.", retryable: true },
+  ENGINE_TIMEOUT: { summary: "The provider process exceeded its deadline.", defaultRecovery: "Inspect provider health and retry only when safe.", retryable: true },
+  ENGINE_OUTPUT_INVALID: { summary: "Provider output failed the runner contract.", defaultRecovery: "Inspect sanitized logs and update the runner or prompt contract.", retryable: false },
+  ENGINE_SANDBOX_DENIED: { summary: "A local security or durable-state boundary blocked execution.", defaultRecovery: "Repair the reported local permission or sandbox issue.", retryable: false },
+  ENGINE_CONTEXT_LIMIT: { summary: "The provider context limit was exceeded.", defaultRecovery: "Reduce the requested batch or upgrade the configured model.", retryable: false },
+  ENGINE_FAILED: { summary: "The provider process failed without a narrower classification.", defaultRecovery: "Inspect doctor and sanitized logs before retrying.", retryable: true },
+  CONTRACT_UPGRADE_REQUIRED: { summary: "The server requires a newer runner contract.", defaultRecovery: "Run npx engager-agent@latest upgrade.", retryable: false },
+  SERVER_UNREACHABLE: { summary: "The Engager control plane could not be reached.", defaultRecovery: "Check network/server health and retry.", retryable: true },
+  CLOCK_SKEW: { summary: "Local and server clocks are too far apart for lease safety.", defaultRecovery: "Correct system time before running again.", retryable: false },
+  LEASE_LOST: { summary: "The server lease was lost before completion.", defaultRecovery: "Let the server safely reissue work.", retryable: true },
+  VALIDATION_REJECTED: { summary: "A submission failed deterministic validation.", defaultRecovery: "Correct the authored payload before retrying.", retryable: false },
+  SERVICE_ENTRY_MISSING: { summary: "The installed service payload is missing or unverifiable.", defaultRecovery: "Run engager-agent service repair.", retryable: false },
+  RUNNER_ALREADY_ACTIVE: { summary: "Another execution, maintenance, or recovery owner is active.", defaultRecovery: "Wait for or recover the reported owner before retrying.", retryable: true },
+  RUNNER_NOT_CONFIGURED: { summary: "No valid private runner configuration is available.", defaultRecovery: "Run engager-agent setup, or resume the reported recovery transition.", retryable: false },
+  RUNNER_PAUSED: { summary: "Local operator intent has paused claims.", defaultRecovery: "Run engager-agent resume when ready.", retryable: false },
+  DISCONNECT_PENDING: { summary: "Owner approval or disconnect recovery is still pending.", defaultRecovery: "Open the verification URL or rerun engager-agent disconnect.", retryable: true },
+  DISCONNECT_DENIED: { summary: "The project owner denied runner disconnect.", defaultRecovery: "The captured service state was restored; retry only if teardown is still intended.", retryable: false },
+  DISCONNECT_EXPIRED: { summary: "The owner-approval challenge expired.", defaultRecovery: "Rerun engager-agent disconnect for a new challenge.", retryable: false },
+  DISCONNECT_PROTOCOL_ERROR: { summary: "A disconnect response failed strict binding validation.", defaultRecovery: "Preserve the transition and retry after server/runner compatibility is fixed.", retryable: false },
+  DISCONNECT_CLEANUP_REQUIRED: { summary: "Revocation succeeded but local teardown is incomplete.", defaultRecovery: "Rerun engager-agent disconnect; it resumes without the revoked bearer.", retryable: true },
+  INTERNAL_ERROR: { summary: "The runner stopped at an unclassified internal boundary.", defaultRecovery: "Run engager-agent doctor and inspect sanitized logs.", retryable: false }
+};
+var RunnerFault = class extends Error {
+  code;
+  impact;
+  recovery;
+  retryable;
+  reference;
+  remoteCode;
+  discardJournal;
+  engineAttempted;
+  constructor(code, message, options) {
+    super(message, { cause: options.cause });
+    this.name = "RunnerFault";
+    this.code = code;
+    this.impact = options.impact;
+    this.recovery = options.recovery;
+    this.retryable = options.retryable ?? false;
+    this.reference = options.reference ?? randomUUID2();
+    this.remoteCode = options.remoteCode;
+    this.discardJournal = options.discardJournal ?? false;
+    this.engineAttempted = options.engineAttempted ?? false;
+  }
+};
+function asRunnerFault(error2) {
+  if (error2 instanceof RunnerFault) return error2;
+  const message = error2 instanceof Error ? error2.message : String(error2);
+  return new RunnerFault("INTERNAL_ERROR", message || "runner operation failed", {
+    impact: "The current runner action stopped before it could be verified.",
+    recovery: "Run `engager-agent doctor`; retry only after the reported problem is resolved.",
+    cause: error2
+  });
+}
+function formatRunnerFault(error2, secrets = []) {
+  const fault = asRunnerFault(error2);
+  return [
+    `${fault.code}${fault.remoteCode ? `/${sanitizeSensitiveText(fault.remoteCode, secrets)}` : ""}: ${sanitizeSensitiveText(fault.message, secrets)}`,
+    `Impact: ${sanitizeSensitiveText(fault.impact, secrets)}`,
+    `Fix: ${sanitizeSensitiveText(fault.recovery, secrets)}`,
+    `Reference: ${sanitizeSensitiveText(fault.reference, secrets)}`
+  ].join("\n");
+}
+function markEngineAttempted(error2) {
+  const fault = asRunnerFault(error2);
+  return new RunnerFault(fault.code, fault.message, {
+    impact: fault.impact,
+    recovery: fault.recovery,
+    retryable: fault.retryable,
+    reference: fault.reference,
+    cause: fault,
+    ...fault.remoteCode ? { remoteCode: fault.remoteCode } : {},
+    discardJournal: fault.discardJournal,
+    engineAttempted: true
+  });
+}
+function redact(value, secrets) {
+  let safe = value;
+  for (const secret of secrets) {
+    if (secret && secret.length >= 6) safe = safe.split(secret).join("[REDACTED]");
+  }
+  return safe.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
+}
+function sanitizeSensitiveText(value, secrets = []) {
+  return redact(sanitizeTerminalText(value), secrets).replace(
+    /\b(?:eng_[A-Za-z0-9]+|engd|engda|engrd|engra)_[A-Za-z0-9_-]{12,}\b/g,
+    "[REDACTED]"
+  ).replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]").replace(
+    /("?(?:api[_-]?key|token|secret|device[_-]?code|ack[_-]?token)"?\s*[:=]\s*)"?[^\s",}]+"?/gi,
+    "$1[REDACTED]"
+  );
+}
+function sanitizeTerminalText(value) {
+  return value.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\x1b[@-_]/g, "").replace(/\u009d[^\u009c]*(?:\u009c|$)/g, "").replace(/\u009b[0-?]*[ -/]*[@-~]/g, "").replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/gi, "").replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// src/log.ts
+import { appendFileSync, chmodSync as chmodSync2, mkdirSync as mkdirSync2 } from "node:fs";
+import { join as join3 } from "node:path";
+function log(message) {
+  const now = /* @__PURE__ */ new Date();
+  const line = `[${now.toISOString()}] ${sanitizeSensitiveText(message, redactionSecrets())}`;
+  console.log(line);
+  try {
+    const dir = join3(agentHome(), "logs");
+    mkdirSync2(dir, { recursive: true, mode: 448 });
+    chmodSync2(dir, 448);
+    const path = join3(dir, `${now.toISOString().slice(0, 10)}.log`);
+    appendFileSync(path, line + "\n", { mode: 384 });
+    chmodSync2(path, 384);
+  } catch {
+  }
+}
+function logEvent(event) {
+  const now = /* @__PURE__ */ new Date();
+  const secrets = redactionSecrets();
+  const clean = (value, max = 400) => sanitizeSensitiveText(value, secrets).slice(0, max);
+  const record2 = {
+    schemaVersion: 1,
+    at: now.toISOString(),
+    event: event.event,
+    level: event.level,
+    ...event.code ? { code: event.code } : {},
+    ...event.reference ? { reference: clean(event.reference, 100) } : {},
+    ...event.runnerId ? { runnerId: clean(event.runnerId, 200) } : {},
+    ...event.workOrderId ? { workOrderId: clean(event.workOrderId, 200) } : {},
+    ...event.lane ? { lane: clean(event.lane, 100) } : {},
+    ...event.phase ? { phase: clean(event.phase, 100) } : {},
+    ...event.detail ? { detail: clean(event.detail) } : {}
+  };
+  try {
+    const dir = join3(agentHome(), "logs");
+    mkdirSync2(dir, { recursive: true, mode: 448 });
+    chmodSync2(dir, 448);
+    const path = join3(dir, `events-${now.toISOString().slice(0, 10)}.jsonl`);
+    appendFileSync(path, `${JSON.stringify(record2)}
+`, { mode: 384 });
+    chmodSync2(path, 384);
+  } catch {
+  }
+}
+function redactionSecrets() {
+  try {
+    const complete = loadConfig();
+    const partial2 = loadPartialConfig();
+    return [
+      complete?.apiKey,
+      partial2?.apiKey,
+      partial2?.pendingDeviceAck?.deviceCode,
+      partial2?.pendingDeviceAck?.ackToken
+    ];
+  } catch {
+    return [];
+  }
+}
+function logFaultEvent(event, error2, context = {}) {
+  const fault = asRunnerFault(error2);
+  logEvent({
+    event,
+    level: "error",
+    code: fault.code,
+    reference: fault.reference,
+    detail: fault.message,
+    ...context
+  });
+}
+
+// src/lock.ts
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import {
+  chmodSync as chmodSync4,
+  existsSync as existsSync4,
+  lstatSync as lstatSync4,
+  mkdirSync as mkdirSync4,
+  readFileSync as readFileSync5,
+  renameSync as renameSync2,
+  rmSync as rmSync2,
+  writeFileSync as writeFileSync2
+} from "node:fs";
+import { join as join6 } from "node:path";
+
+// src/status.ts
+import { chmodSync as chmodSync3, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync3 } from "node:fs";
+import { join as join4 } from "node:path";
+function statusPath() {
+  return join4(agentHome(), "status.json");
+}
+function writeStatus(status) {
+  try {
+    mkdirSync3(agentHome(), { recursive: true, mode: 448 });
+    chmodSync3(agentHome(), 448);
+    writePrivateJsonDurably(statusPath(), sanitizeStatus({ ...status, updatedAt: Date.now() }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function readStatus() {
+  if (!existsSync2(statusPath())) return null;
+  try {
+    const value = JSON.parse(readFileSync3(statusPath(), "utf8"));
+    return value.schemaVersion === 2 && typeof value.pid === "number" ? sanitizeStatus(value) : null;
+  } catch {
+    return null;
+  }
+}
+function sanitizeStatus(status) {
+  return {
+    ...status,
+    ...status.stateReason ? { stateReason: sanitizeTerminalText(status.stateReason).slice(0, 400) } : {},
+    ...status.lastCycle ? {
+      lastCycle: {
+        ...status.lastCycle,
+        note: sanitizeTerminalText(status.lastCycle.note).slice(0, 400)
+      }
+    } : {}
+  };
+}
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // src/upgrade-transition.ts
+import { createHash as createHash2 } from "node:crypto";
+import {
+  closeSync as closeSync3,
+  constants as constants3,
+  existsSync as existsSync3,
+  fstatSync as fstatSync2,
+  lstatSync as lstatSync3,
+  openSync as openSync3,
+  readFileSync as readFileSync4
+} from "node:fs";
+import { join as join5 } from "node:path";
 var UPGRADE_TRANSITION_PHASES = [
   "prepared",
   "service_stopped",
@@ -11582,11 +11972,11 @@ var UpgradeTransitionSchema = external_exports.object({
   }
 });
 function upgradeTransitionPath() {
-  return join4(agentHome(), "upgrade-transition.json");
+  return join5(agentHome(), "upgrade-transition.json");
 }
 function hasUpgradeTransition() {
   try {
-    lstatSync2(upgradeTransitionPath());
+    lstatSync3(upgradeTransitionPath());
     return true;
   } catch (error2) {
     if (error2.code === "ENOENT") return false;
@@ -11627,28 +12017,28 @@ function readUpgradeTransition() {
   const path = upgradeTransitionPath();
   let fd;
   try {
-    fd = openSync2(path, constants2.O_RDONLY | constants2.O_NOFOLLOW);
+    fd = openSync3(path, constants3.O_RDONLY | constants3.O_NOFOLLOW);
   } catch (error2) {
     if (error2.code === "ENOENT") return null;
     throw error2;
   }
   try {
-    const stat = fstatSync(fd);
+    const stat = fstatSync2(fd);
     const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
     if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
       throw new Error("upgrade transition journal is not a private 0600 regular file");
     }
     if (stat.size > 1e6) throw new Error("upgrade transition journal exceeds 1 MB");
-    return UpgradeTransitionSchema.parse(JSON.parse(readFileSync3(fd, "utf8")));
+    return UpgradeTransitionSchema.parse(JSON.parse(readFileSync4(fd, "utf8")));
   } finally {
-    closeSync2(fd);
+    closeSync3(fd);
   }
 }
 function clearUpgradeTransition() {
   if (existsSync3(upgradeTransitionPath())) removePathDurably(upgradeTransitionPath());
 }
 function sha256(contents) {
-  return createHash("sha256").update(contents).digest("hex");
+  return createHash2("sha256").update(contents).digest("hex");
 }
 function isManagedRuntimeTarget(value) {
   return /^versions\/[A-Za-z0-9._-]+$/.test(value);
@@ -11662,14 +12052,14 @@ var REAL_IDENTITY_DEPS = {
 var TRUSTED_PROCESS_IDENTITY_EXECUTABLES = ["/bin/ps", "/usr/bin/ps"];
 var MAINTENANCE_TOKEN_ENV = "ENGAGER_AGENT_MAINTENANCE_TOKEN";
 function locksRoot() {
-  return join5(agentHome(), "locks");
+  return join6(agentHome(), "locks");
 }
 function runnerLockPath(runnerId) {
   void runnerId;
-  return join5(locksRoot(), "agent.lock");
+  return join6(locksRoot(), "agent.lock");
 }
 function maintenanceLockPath() {
-  return join5(locksRoot(), "maintenance.lock");
+  return join6(locksRoot(), "maintenance.lock");
 }
 function acquireRunnerLock(runnerId, deps = REAL_IDENTITY_DEPS, maintenanceToken = process.env[MAINTENANCE_TOKEN_ENV]) {
   mkdirSync4(locksRoot(), { recursive: true, mode: 448 });
@@ -11728,7 +12118,7 @@ function acquireNamedLock(path, runnerId, deps) {
 }
 function assertMaintenanceAccess(deps, maintenanceToken) {
   const inspection = inspectOwner(maintenanceLockPath());
-  const transitionPending = hasUpgradeTransition();
+  const transitionPending = hasUpgradeTransition() || hasDisconnectTransition();
   if (inspection.state === "invalid") {
     throw invalidLockFault("maintenance lock", inspection.detail);
   }
@@ -11773,7 +12163,7 @@ function transitionRecoveryFault() {
     "an interrupted service transition requires deterministic recovery",
     {
       impact: "This process did not poll, claim, or execute work against an ambiguous runtime payload.",
-      recovery: "Run `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start` to reconcile it.",
+      recovery: "Run `engager-agent disconnect` for a disconnect transition, or `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start` for an upgrade transition.",
       retryable: true
     }
   );
@@ -11782,7 +12172,7 @@ function tryCreate(path, owner) {
   try {
     mkdirSync4(path, { mode: 448 });
     try {
-      writeFileSync2(join5(path, "owner.json"), `${JSON.stringify(owner, null, 2)}
+      writeFileSync2(join6(path, "owner.json"), `${JSON.stringify(owner, null, 2)}
 `, {
         mode: 384,
         flag: "wx"
@@ -11848,7 +12238,7 @@ function acquireRecoveryGuard(path, owner, deps) {
 function inspectOwner(path) {
   let lockStat;
   try {
-    lockStat = lstatSync3(path);
+    lockStat = lstatSync4(path);
   } catch (error2) {
     if (error2.code === "ENOENT") return { state: "absent" };
     return { state: "invalid", detail: "lock path could not be inspected" };
@@ -11857,12 +12247,12 @@ function inspectOwner(path) {
     return { state: "invalid", detail: "lock path is not a real directory" };
   }
   try {
-    const ownerPath = join5(path, "owner.json");
-    const ownerStat = lstatSync3(ownerPath);
+    const ownerPath = join6(path, "owner.json");
+    const ownerStat = lstatSync4(ownerPath);
     if (!ownerStat.isFile() || ownerStat.isSymbolicLink()) {
       return { state: "invalid", detail: "owner metadata is not a regular file" };
     }
-    const value = JSON.parse(readFileSync4(join5(path, "owner.json"), "utf8"));
+    const value = JSON.parse(readFileSync5(join6(path, "owner.json"), "utf8"));
     if (!Number.isSafeInteger(value.pid) || Number(value.pid) <= 0 || typeof value.token !== "string" || value.token.length < 1 || typeof value.runnerId !== "string" || value.runnerId.length < 1 || !Number.isSafeInteger(value.startedAt) || Number(value.startedAt) < 0 || typeof value.processIdentity !== "string" || value.processIdentity.length < 1) {
       return { state: "invalid", detail: "owner metadata failed structural validation" };
     }
@@ -11963,18 +12353,18 @@ function alreadyActive(owner) {
 
 // src/markers.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { existsSync as existsSync5, readFileSync as readFileSync5, rmSync as rmSync3 } from "node:fs";
-import { join as join6 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync6, rmSync as rmSync3 } from "node:fs";
+import { join as join7 } from "node:path";
 function haltPath() {
-  return join6(agentHome(), "halted.json");
+  return join7(agentHome(), "halted.json");
 }
 function pausePath() {
-  return join6(agentHome(), "paused.json");
+  return join7(agentHome(), "paused.json");
 }
 function readJson(path) {
   if (!existsSync5(path)) return null;
   try {
-    return JSON.parse(readFileSync5(path, "utf8"));
+    return JSON.parse(readFileSync6(path, "utf8"));
   } catch {
     return CORRUPT;
   }
@@ -12029,16 +12419,16 @@ function clearPause() {
 }
 
 // src/service.ts
-import { createHash as createHash2, randomUUID as randomUUID5 } from "node:crypto";
+import { createHash as createHash3, randomUUID as randomUUID5 } from "node:crypto";
 import { spawnSync as spawnSync2 } from "node:child_process";
 import {
   chmodSync as chmodSync5,
   copyFileSync,
   existsSync as existsSync6,
-  lstatSync as lstatSync4,
+  lstatSync as lstatSync5,
   mkdirSync as mkdirSync5,
   mkdtempSync,
-  readFileSync as readFileSync6,
+  readFileSync as readFileSync7,
   readdirSync,
   readlinkSync,
   realpathSync,
@@ -12048,7 +12438,7 @@ import {
   writeFileSync as writeFileSync3
 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename, dirname as dirname2, isAbsolute as isAbsolute2, join as join7, relative, sep } from "node:path";
+import { basename, dirname as dirname2, isAbsolute as isAbsolute2, join as join8, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/version.ts
@@ -12061,14 +12451,14 @@ var PLUTIL_PATH = "/usr/bin/plutil";
 var LAUNCHCTL_TIMEOUT_MS = 1e4;
 var PLUTIL_TIMEOUT_MS = 5e3;
 function plistPath() {
-  const root = process.env.ENGAGER_LAUNCH_AGENTS_DIR ?? join7(homedir2(), "Library", "LaunchAgents");
-  return join7(root, `${SERVICE_LABEL}.plist`);
+  const root = process.env.ENGAGER_LAUNCH_AGENTS_DIR ?? join8(homedir2(), "Library", "LaunchAgents");
+  return join8(root, `${SERVICE_LABEL}.plist`);
 }
 function runtimeRoot() {
-  return join7(agentHome(), "runtime");
+  return join8(agentHome(), "runtime");
 }
 function serviceEntryPath() {
-  return join7(runtimeRoot(), "current", "cli.mjs");
+  return join8(runtimeRoot(), "current", "cli.mjs");
 }
 var xmlEscape = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 function renderPlist(options) {
@@ -12154,22 +12544,22 @@ function resolveDurableNode() {
 function resolveSourceBundle() {
   const self = fileURLToPath(import.meta.url);
   if (basename(self) === "engager-agent.mjs") return self;
-  return join7(dirname2(dirname2(self)), "bundle", "engager-agent.mjs");
+  return join8(dirname2(dirname2(self)), "bundle", "engager-agent.mjs");
 }
 function installDurablePayload(version2 = AGENT_VERSION, sourceBundle = resolveSourceBundle()) {
   if (!existsSync6(sourceBundle)) {
     throw new Error(`SERVICE_ENTRY_MISSING: built runner bundle not found at ${sourceBundle}`);
   }
-  const bytes = readFileSync6(sourceBundle);
+  const bytes = readFileSync7(sourceBundle);
   const sourceDirectory = dirname2(sourceBundle);
-  const watchdogSource = join7(sourceDirectory, "engine-watchdog.mjs");
+  const watchdogSource = join8(sourceDirectory, "engine-watchdog.mjs");
   if (!existsSync6(watchdogSource)) {
     throw new Error("SERVICE_ENTRY_MISSING: audited engine watchdog is missing");
   }
-  const watchdogBytes = readFileSync6(watchdogSource);
+  const watchdogBytes = readFileSync7(watchdogSource);
   const assetCandidates = [sourceDirectory, dirname2(sourceDirectory)];
   const assets = ["LICENSE", "THIRD_PARTY_NOTICES", "THIRD_PARTY_COMPONENTS.json"].map((name2) => {
-    const source = assetCandidates.map((directory) => join7(directory, name2)).find(existsSync6);
+    const source = assetCandidates.map((directory) => join8(directory, name2)).find(existsSync6);
     if (!source) throw new Error(`SERVICE_ENTRY_MISSING: audited payload asset ${name2} is missing`);
     return { name: name2, source };
   });
@@ -12178,7 +12568,7 @@ function installDurablePayload(version2 = AGENT_VERSION, sourceBundle = resolveS
     { name: "engine-watchdog.mjs", bytes: watchdogBytes, mode: 320 },
     ...assets.map((asset) => ({
       name: asset.name,
-      bytes: readFileSync6(asset.source),
+      bytes: readFileSync7(asset.source),
       mode: 256
     }))
   ];
@@ -12189,36 +12579,36 @@ function installDurablePayload(version2 = AGENT_VERSION, sourceBundle = resolveS
   const runtime = runtimeRoot();
   ensureOwnedPrivateDirectory(runtime, "runtime root");
   syncDirectoryDurably(home);
-  const versions = join7(runtime, "versions");
+  const versions = join8(runtime, "versions");
   ensureOwnedPrivateDirectory(versions, "runtime versions root");
   syncDirectoryDurably(runtime);
   const name = `${version2}-${sha2562.slice(0, 16)}`;
-  const target = join7(versions, name);
+  const target = join8(versions, name);
   if (!existsSync6(target)) {
-    const staging = mkdtempSync(join7(versions, ".staging-"));
-    const stagedEntry = join7(staging, "cli.mjs");
-    const stagedWatchdog = join7(staging, "engine-watchdog.mjs");
+    const staging = mkdtempSync(join8(versions, ".staging-"));
+    const stagedEntry = join8(staging, "cli.mjs");
+    const stagedWatchdog = join8(staging, "engine-watchdog.mjs");
     copyFileSync(sourceBundle, stagedEntry);
     copyFileSync(watchdogSource, stagedWatchdog);
     chmodSync5(stagedEntry, 320);
     chmodSync5(stagedWatchdog, 320);
     for (const asset of assets) {
-      const targetAsset = join7(staging, asset.name);
+      const targetAsset = join8(staging, asset.name);
       copyFileSync(asset.source, targetAsset);
       chmodSync5(targetAsset, 256);
     }
     const copied = payloadManifestDigest(
       manifestSources.map((file) => ({
         name: file.name,
-        bytes: readFileSync6(join7(staging, file.name)),
-        mode: lstatSync4(join7(staging, file.name)).mode & 511
+        bytes: readFileSync7(join8(staging, file.name)),
+        mode: lstatSync5(join8(staging, file.name)).mode & 511
       }))
     );
     if (copied !== sha2562) {
       rmSync4(staging, { recursive: true, force: true });
       throw new Error("SERVICE_ENTRY_MISSING: copied runner bundle failed SHA-256 verification");
     }
-    for (const file of manifestSources) syncFileDurably(join7(staging, file.name));
+    for (const file of manifestSources) syncFileDurably(join8(staging, file.name));
     syncDirectoryDurably(staging);
     renamePathDurably(staging, target);
   }
@@ -12227,12 +12617,12 @@ function installDurablePayload(version2 = AGENT_VERSION, sourceBundle = resolveS
     version: version2,
     sha256: sha2562,
     versionDir: target,
-    versionEntryPath: join7(target, "cli.mjs")
+    versionEntryPath: join8(target, "cli.mjs")
   };
 }
 function activateDurablePayload(payload) {
-  const current = join7(runtimeRoot(), "current");
-  const previous = join7(runtimeRoot(), "previous");
+  const current = join8(runtimeRoot(), "current");
+  const previous = join8(runtimeRoot(), "previous");
   assertManagedRuntimeLink(current);
   assertManagedRuntimeLink(previous);
   const snapshot = {
@@ -12261,8 +12651,8 @@ function activateDurablePayload(payload) {
   return snapshot;
 }
 function restoreDurableActivation(snapshot) {
-  restoreSymlink(join7(runtimeRoot(), "current"), snapshot.currentTarget);
-  restoreSymlink(join7(runtimeRoot(), "previous"), snapshot.previousTarget);
+  restoreSymlink(join8(runtimeRoot(), "current"), snapshot.currentTarget);
+  restoreSymlink(join8(runtimeRoot(), "previous"), snapshot.previousTarget);
 }
 function smokeDurablePayload(payload, version2, nodePath = resolveDurableNode()) {
   if (!nodePath) {
@@ -12289,8 +12679,8 @@ function activateStandaloneDurablePayload(payload, version2) {
         note: `UPGRADE_RECOVERY_REQUIRED: interrupted transition remains at ${pending.phase}`
       };
     }
-    const current = snapshotRuntimeLink(join7(runtimeRoot(), "current"));
-    const previous = snapshotRuntimeLink(join7(runtimeRoot(), "previous"));
+    const current = snapshotRuntimeLink(join8(runtimeRoot(), "current"));
+    const previous = snapshotRuntimeLink(join8(runtimeRoot(), "previous"));
     const linkTarget = relative(runtimeRoot(), payload.versionDir);
     let transition = writeUpgradeTransition({
       schemaVersion: 1,
@@ -12375,6 +12765,11 @@ function serviceDisabledState() {
   const match = new RegExp(`"?${escaped}"?\\s*=>\\s*(true|false)`, "i").exec(result.out);
   return match ? match[1].toLowerCase() === "true" : false;
 }
+function setServiceDisabled(disabled) {
+  if (process.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
+  const result = launchctl(disabled ? "disable" : "enable", serviceTarget());
+  return result.status === 0 ? { ok: true, note: `${SERVICE_LABEL} ${disabled ? "disabled" : "enabled"}` } : { ok: false, note: `launchctl ${disabled ? "disable" : "enable"} failed: ${result.out.trim().slice(0, 300)}` };
+}
 function beginServiceTransitionAfterQuiesce(transition, deps) {
   const stopped = deps.stop();
   const tolerated = /could not find service|no such process/i.test(stopped.out);
@@ -12425,14 +12820,14 @@ function installService(version2 = AGENT_VERSION, options = {}) {
   }
   const smoke = smokeDurablePayload(payload, version2, nodePath);
   if (!smoke.ok) return smoke;
-  const logDir = join7(agentHome(), "logs");
+  const logDir = join8(agentHome(), "logs");
   mkdirSync5(logDir, { recursive: true, mode: 448 });
   chmodSync5(logDir, 448);
   mkdirSync5(dirname2(plistPath()), { recursive: true });
   const plistOptions = {
     nodePath,
     scriptPath: serviceEntryPath(),
-    logPath: join7(logDir, "service.log"),
+    logPath: join8(logDir, "service.log"),
     pathEnv: trustedServicePath(nodePath, config2.enginePath)
   };
   const cleanPlist = renderPlist(plistOptions);
@@ -12449,7 +12844,7 @@ function installService(version2 = AGENT_VERSION, options = {}) {
     return { ok: false, note: `SERVICE_ENTRY_MISSING: invalid launchd plist: ${lint.out.trim()}` };
   }
   rmSync4(tmp, { force: true });
-  const storedPriorPlist = existsSync6(path) ? readFileSync6(path) : null;
+  const storedPriorPlist = existsSync6(path) ? readFileSync7(path) : null;
   const priorPlist = storedPriorPlist ? plistWithoutMaintenanceToken(storedPriorPlist) : null;
   if (storedPriorPlist && priorPlist && !storedPriorPlist.equals(priorPlist)) {
     restorePlist(path, priorPlist);
@@ -12463,8 +12858,8 @@ function installService(version2 = AGENT_VERSION, options = {}) {
         note: `UPGRADE_RECOVERY_REQUIRED: interrupted ${pending.target.version} transition is at ${pending.phase}; reconcile it before service repair`
       };
     }
-    const current = snapshotRuntimeLink(join7(runtimeRoot(), "current"));
-    const previous = snapshotRuntimeLink(join7(runtimeRoot(), "previous"));
+    const current = snapshotRuntimeLink(join8(runtimeRoot(), "current"));
+    const previous = snapshotRuntimeLink(join8(runtimeRoot(), "previous"));
     const linkTarget = relative(runtimeRoot(), payload.versionDir);
     const observedState = serviceState();
     const priorDisabled = options.priorDisabled ?? serviceDisabledState();
@@ -12610,7 +13005,7 @@ function installService(version2 = AGENT_VERSION, options = {}) {
     rmSync4(tmp, { force: true });
   }
 }
-function restartUntouchedPriorService(transition, maintenanceToken, acquireBarrier) {
+function restartUntouchedPriorService(transition, maintenanceToken, acquireBarrier2) {
   if (!transition.prior.installed) {
     return {
       ok: true,
@@ -12640,7 +13035,7 @@ function restartUntouchedPriorService(transition, maintenanceToken, acquireBarri
     if (!priorPlist || !transition.prior.current.target) {
       throw new Error("enabled prior service has no restorable plist or payload");
     }
-    barrier = acquireBarrier();
+    barrier = acquireBarrier2();
     verifyTransitionPrior(transition, false, true);
     const smoke = smokeRecordedPayload(transition.prior.current);
     if (!smoke.ok) throw new Error(`prior payload smoke test failed: ${smoke.note}`);
@@ -12681,7 +13076,7 @@ function restartUntouchedPriorService(transition, maintenanceToken, acquireBarri
     let exactStopped = false;
     let cleanupBarrier = null;
     try {
-      cleanupBarrier = acquireBarrier();
+      cleanupBarrier = acquireBarrier2();
       restorePlist(path, priorPlist);
       verifyTransitionPrior(transition, false, true);
       exactStopped = true;
@@ -12949,7 +13344,7 @@ function startServiceWithMaintenanceToken(maintenanceToken, deps = REAL_START_SE
   const tmp = `${path}.${process.pid}.${randomUUID5()}.start-handoff`;
   let clean;
   try {
-    clean = plistWithoutMaintenanceToken(readFileSync6(path));
+    clean = plistWithoutMaintenanceToken(readFileSync7(path));
     writeFileSync3(tmp, plistWithMaintenanceToken(clean, maintenanceToken), {
       mode: 384,
       flag: "wx"
@@ -13016,7 +13411,7 @@ function restorePlist(path, contents) {
 }
 function pathExists(path) {
   try {
-    lstatSync4(path);
+    lstatSync5(path);
     return true;
   } catch (error2) {
     if (error2.code === "ENOENT") return false;
@@ -13028,7 +13423,7 @@ function ownedByCurrentUser(uid2) {
 }
 function ensureOwnedPrivateDirectory(path, label) {
   try {
-    const stat = lstatSync4(path);
+    const stat = lstatSync5(path);
     if (!stat.isDirectory() || stat.isSymbolicLink()) {
       throw new Error(`SERVICE_ENTRY_MISSING: ${label} must be a real directory`);
     }
@@ -13040,7 +13435,7 @@ function ensureOwnedPrivateDirectory(path, label) {
     if (error2.code !== "ENOENT") throw error2;
     mkdirSync5(path, { mode: 448 });
   }
-  const verified = lstatSync4(path);
+  const verified = lstatSync5(path);
   if (!verified.isDirectory() || verified.isSymbolicLink() || !ownedByCurrentUser(verified.uid) || (verified.mode & 511) !== 448) {
     throw new Error(`SERVICE_ENTRY_MISSING: ${label} failed private-directory verification`);
   }
@@ -13152,7 +13547,7 @@ function trustedServicePath(nodePath, enginePath) {
 }
 function readSymlink(path) {
   try {
-    return lstatSync4(path).isSymbolicLink() ? readlinkSync(path) : null;
+    return lstatSync5(path).isSymbolicLink() ? readlinkSync(path) : null;
   } catch {
     return null;
   }
@@ -13166,8 +13561,8 @@ function payloadHashForTarget(target) {
   if (!isManagedRuntimeTarget(target)) {
     throw new Error(`runtime target ${target} is outside managed versions`);
   }
-  const directory = join7(runtimeRoot(), target);
-  const stat = lstatSync4(directory);
+  const directory = join8(runtimeRoot(), target);
+  const stat = lstatSync5(directory);
   if (!stat.isDirectory() || (stat.mode & 511) !== 448 || !ownedByCurrentUser(stat.uid)) {
     throw new Error(`runtime payload ${target} is not a private directory`);
   }
@@ -13183,12 +13578,12 @@ function payloadHashForTarget(target) {
   }
   return payloadManifestDigest(
     files.map((file) => {
-      const path = join7(directory, file.name);
-      const fileStat = lstatSync4(path);
+      const path = join8(directory, file.name);
+      const fileStat = lstatSync5(path);
       if (!fileStat.isFile() || (fileStat.mode & 511) !== file.mode || !ownedByCurrentUser(fileStat.uid)) {
         throw new Error(`runtime payload ${target}/${file.name} mode is unsafe`);
       }
-      return { ...file, bytes: readFileSync6(path) };
+      return { ...file, bytes: readFileSync7(path) };
     })
   );
 }
@@ -13210,8 +13605,8 @@ function smokeRecordedPayload(snapshot) {
     {
       version: version2,
       sha256: snapshot.payloadSha256,
-      versionDir: join7(runtimeRoot(), snapshot.target),
-      versionEntryPath: join7(runtimeRoot(), snapshot.target, "cli.mjs")
+      versionDir: join8(runtimeRoot(), snapshot.target),
+      versionEntryPath: join8(runtimeRoot(), snapshot.target, "cli.mjs")
     },
     version2
   );
@@ -13236,11 +13631,11 @@ function verifyPlistSnapshot(snapshot) {
     if (existsSync6(path)) throw new Error("service plist exists but the transition recorded none");
     return;
   }
-  const stat = lstatSync4(path);
+  const stat = lstatSync5(path);
   if (!stat.isFile() || (stat.mode & 511) !== 384 || !ownedByCurrentUser(stat.uid)) {
     throw new Error("service plist is not a private 0600 regular file");
   }
-  const actual = readFileSync6(path);
+  const actual = readFileSync7(path);
   if (sha256(actual) !== snapshot.sha256 || !actual.equals(expected)) {
     throw new Error("service plist does not match the transition journal");
   }
@@ -13256,8 +13651,8 @@ function verifyTransitionPayloadReferences(transition) {
   fileSnapshotContents(transition.target.plist);
 }
 function verifyTransitionPrior(transition, expectedLoaded, verifyIntent = true, runtime = REAL_TRANSITION_RUNTIME) {
-  verifyRuntimeLink(join7(runtimeRoot(), "current"), transition.prior.current);
-  verifyRuntimeLink(join7(runtimeRoot(), "previous"), transition.prior.previous);
+  verifyRuntimeLink(join8(runtimeRoot(), "current"), transition.prior.current);
+  verifyRuntimeLink(join8(runtimeRoot(), "previous"), transition.prior.previous);
   verifyPlistSnapshot(transition.prior.plist);
   if (runtime.state().loaded !== expectedLoaded) {
     throw new Error(`restored service did not reach recorded ${expectedLoaded ? "loaded" : "stopped"} state`);
@@ -13267,11 +13662,11 @@ function verifyTransitionPrior(transition, expectedLoaded, verifyIntent = true, 
   }
 }
 function verifyTransitionTarget(transition, expectedLoaded) {
-  verifyRuntimeLink(join7(runtimeRoot(), "current"), {
+  verifyRuntimeLink(join8(runtimeRoot(), "current"), {
     target: transition.target.linkTarget,
     payloadSha256: transition.target.payloadSha256
   });
-  verifyRuntimeLink(join7(runtimeRoot(), "previous"), transition.target.previous);
+  verifyRuntimeLink(join8(runtimeRoot(), "previous"), transition.target.previous);
   verifyPlistSnapshot(transition.target.plist);
   if (serviceState().loaded !== expectedLoaded) {
     throw new Error(`upgraded service did not reach ${expectedLoaded ? "loaded" : "stopped"} state`);
@@ -13282,7 +13677,7 @@ function verifyTransitionTarget(transition, expectedLoaded) {
 }
 function assertManagedRuntimeLink(path) {
   try {
-    if (!lstatSync4(path).isSymbolicLink()) {
+    if (!lstatSync5(path).isSymbolicLink()) {
       throw new Error(`SERVICE_ENTRY_MISSING: refusing to replace non-symlink runtime path ${path}`);
     }
   } catch (error2) {
@@ -13291,7 +13686,7 @@ function assertManagedRuntimeLink(path) {
   }
 }
 function verifyDurablePayload(target, expectedSha256, expectedFiles) {
-  const targetStat = lstatSync4(target);
+  const targetStat = lstatSync5(target);
   if (!targetStat.isDirectory() || (targetStat.mode & 511) !== 448 || !ownedByCurrentUser(targetStat.uid)) {
     throw new Error("SERVICE_ENTRY_MISSING: durable runner payload directory is unsafe");
   }
@@ -13301,9 +13696,9 @@ function verifyDurablePayload(target, expectedSha256, expectedFiles) {
     throw new Error("SERVICE_ENTRY_MISSING: durable runner payload file set is not exact");
   }
   const actualFiles = expectedFiles.map((file) => {
-    const installed = join7(target, file.name);
-    const stat = lstatSync4(installed);
-    const bytes = readFileSync6(installed);
+    const installed = join8(target, file.name);
+    const stat = lstatSync5(installed);
+    const bytes = readFileSync7(installed);
     if (!stat.isFile() || (stat.mode & 511) !== file.mode || !ownedByCurrentUser(stat.uid) || !bytes.equals(file.bytes)) {
       throw new Error(`SERVICE_ENTRY_MISSING: payload file ${file.name} failed exact verification`);
     }
@@ -13314,22 +13709,22 @@ function verifyDurablePayload(target, expectedSha256, expectedFiles) {
   }
 }
 function payloadManifestDigest(files) {
-  const hash = createHash2("sha256");
+  const hash = createHash3("sha256");
   for (const file of [...files].sort((a, b3) => a.name.localeCompare(b3.name))) {
     hash.update(file.name);
     hash.update("\0");
     hash.update(file.mode.toString(8));
     hash.update("\0");
-    hash.update(createHash2("sha256").update(file.bytes).digest("hex"));
+    hash.update(createHash3("sha256").update(file.bytes).digest("hex"));
     hash.update("\n");
   }
   return hash.digest("hex");
 }
 
 // src/journal.ts
-import { createHash as createHash3, randomUUID as randomUUID6 } from "node:crypto";
-import { chmodSync as chmodSync6, lstatSync as lstatSync5, readFileSync as readFileSync7, rmSync as rmSync5 } from "node:fs";
-import { join as join8 } from "node:path";
+import { createHash as createHash4, randomUUID as randomUUID6 } from "node:crypto";
+import { chmodSync as chmodSync6, lstatSync as lstatSync6, readFileSync as readFileSync8, rmSync as rmSync5 } from "node:fs";
+import { join as join9 } from "node:path";
 
 // node_modules/@engager/runner-contract/dist/version.js
 var RUNNER_CONTRACT_MAJOR = 2;
@@ -14797,13 +15192,13 @@ var ActiveWorkJournalSchema = external_exports.object({
   completion: RunnerCompleteWorkInputSchema.optional()
 }).strict();
 function journalPath() {
-  return join8(agentHome(), "active-work.json");
+  return join9(agentHome(), "active-work.json");
 }
 function readJournal() {
   const path = journalPath();
   let stat;
   try {
-    stat = lstatSync5(path);
+    stat = lstatSync6(path);
   } catch (error2) {
     if (error2.code === "ENOENT") return null;
     throw error2;
@@ -14812,7 +15207,7 @@ function readJournal() {
   if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
     throw new Error("active work journal is not a private regular file");
   }
-  return ActiveWorkJournalSchema.parse(JSON.parse(readFileSync7(path, "utf8")));
+  return ActiveWorkJournalSchema.parse(JSON.parse(readFileSync8(path, "utf8")));
 }
 function writeJournal(value) {
   const parsed = ActiveWorkJournalSchema.parse({ ...value, savedAt: Date.now() });
@@ -14836,7 +15231,7 @@ function startJournal(input) {
 function journalBinding(config2) {
   return {
     mcpUrl: new URL(config2.mcpUrl).toString(),
-    credentialFingerprint: createHash3("sha256").update(config2.apiKey).digest("hex")
+    credentialFingerprint: createHash4("sha256").update(config2.apiKey).digest("hex")
   };
 }
 function withJournalSubmission(journal, submission) {
@@ -14892,7 +15287,7 @@ function prepareSetupJournal(now = Date.now()) {
   if (inspection.state === "active") {
     return { state: "blocked", reason: "active", terminalAt: inspection.terminalAt };
   }
-  const destination = join8(
+  const destination = join9(
     agentHome(),
     `active-work.expired.${now}.${randomUUID6()}.json`
   );
@@ -14935,10 +15330,12 @@ var REAL_UPGRADE_DEPS = {
   signal: (pid, signal) => process.kill(pid, signal)
 };
 function upgradeAgent(version2, deps = REAL_UPGRADE_DEPS) {
-  const config2 = deps.load();
+  const disconnectBlock = disconnectLifecycleBlock();
+  if (disconnectBlock) return disconnectBlock;
+  const configSnapshot = deps.load();
   let maintenance;
   try {
-    maintenance = deps.maintenance(config2?.runnerId ?? "global");
+    maintenance = deps.maintenance(configSnapshot?.runnerId ?? "global");
   } catch (error2) {
     return {
       ok: false,
@@ -14946,6 +15343,11 @@ function upgradeAgent(version2, deps = REAL_UPGRADE_DEPS) {
     };
   }
   try {
+    const disconnectInsideMaintenance = disconnectLifecycleBlock();
+    if (disconnectInsideMaintenance) return disconnectInsideMaintenance;
+    const config2 = deps.load();
+    const configBlock = changedConfigSnapshotBlock("upgrade", configSnapshot, config2);
+    if (configBlock) return configBlock;
     const preflightOwner = deps.owner(config2?.runnerId ?? "global");
     if (preflightOwner.state === "invalid") {
       return unsafeLifecycleOwner(preflightOwner.detail);
@@ -15083,13 +15485,15 @@ function upgradeAgent(version2, deps = REAL_UPGRADE_DEPS) {
   }
 }
 function installServiceWithMaintenance(version2, deps = REAL_UPGRADE_DEPS) {
-  const config2 = deps.load();
-  if (!config2) {
+  const disconnectBlock = disconnectLifecycleBlock();
+  if (disconnectBlock) return disconnectBlock;
+  const configSnapshot = deps.load();
+  if (!configSnapshot) {
     return { ok: false, note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` first" };
   }
   let maintenance;
   try {
-    maintenance = deps.maintenance(config2.runnerId);
+    maintenance = deps.maintenance(configSnapshot.runnerId);
   } catch (error2) {
     return {
       ok: false,
@@ -15097,6 +15501,12 @@ function installServiceWithMaintenance(version2, deps = REAL_UPGRADE_DEPS) {
     };
   }
   try {
+    const disconnectInsideMaintenance = disconnectLifecycleBlock();
+    if (disconnectInsideMaintenance) return disconnectInsideMaintenance;
+    const config2 = deps.load();
+    const configBlock = changedConfigSnapshotBlock("service install", configSnapshot, config2);
+    if (configBlock) return configBlock;
+    if (!config2) return { ok: false, note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` first" };
     const owner = deps.owner(config2.runnerId);
     if (owner.state === "invalid") return unsafeLifecycleOwner(owner.detail);
     const recovery = reconcileUnderMaintenance(deps, config2.runnerId, maintenance);
@@ -15307,6 +15717,25 @@ function resumeAgentWithMaintenance(applyLocalResume, deps = REAL_UPGRADE_DEPS) 
     return deps.startService(maintenance.owner.token);
   });
 }
+function pauseAgentWithMaintenance(applyLocalPause, deps = REAL_UPGRADE_DEPS) {
+  return withLifecycleMaintenance("pause", deps, (config2) => {
+    if (!config2) {
+      return { ok: false, note: "RUNNER_NOT_CONFIGURED: no connected runner is available to pause" };
+    }
+    const state = deps.service();
+    const ownerInspection = deps.owner(config2.runnerId);
+    if (ownerInspection.state === "invalid") return unsafeLifecycleOwner(ownerInspection.detail);
+    const owner = ownerInspection.state === "valid" ? ownerInspection.owner : null;
+    if (state.loaded && (!owner || state.pid !== owner.pid || !deps.ownerLive(owner))) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: loaded service ownership could not be verified before pause"
+      };
+    }
+    applyLocalPause();
+    return { ok: true, note: "local claims paused under lifecycle maintenance" };
+  });
+}
 function stopAgentWithMaintenance(deps = REAL_UPGRADE_DEPS) {
   return withLifecycleMaintenance("stop", deps, (config2, maintenance) => {
     const runnerId = config2?.runnerId ?? "global";
@@ -15384,8 +15813,10 @@ function uninstallServiceWithMaintenance(deps = REAL_UPGRADE_DEPS) {
   });
 }
 function withLifecycleMaintenance(action, deps, mutate) {
-  const config2 = deps.load();
-  const runnerId = config2?.runnerId ?? "global";
+  const disconnectBlock = disconnectLifecycleBlock();
+  if (disconnectBlock) return disconnectBlock;
+  const configSnapshot = deps.load();
+  const runnerId = configSnapshot?.runnerId ?? "global";
   let maintenance;
   try {
     maintenance = deps.maintenance(runnerId);
@@ -15396,6 +15827,11 @@ function withLifecycleMaintenance(action, deps, mutate) {
     };
   }
   try {
+    const disconnectInsideMaintenance = disconnectLifecycleBlock();
+    if (disconnectInsideMaintenance) return disconnectInsideMaintenance;
+    const config2 = deps.load();
+    const configBlock = changedConfigSnapshotBlock(action, configSnapshot, config2);
+    if (configBlock) return configBlock;
     const owner = deps.owner(runnerId);
     if (owner.state === "invalid") return unsafeLifecycleOwner(owner.detail);
     const recovery = reconcileUnderMaintenance(deps, runnerId, maintenance);
@@ -15408,6 +15844,25 @@ function withLifecycleMaintenance(action, deps, mutate) {
     };
   } finally {
     maintenance.release();
+  }
+}
+function changedConfigSnapshotBlock(action, before, after) {
+  return sameConfigSnapshot(before, after) ? null : {
+    ok: false,
+    note: `UPGRADE_BLOCKED: ${action} observed a changed runner configuration after acquiring maintenance; no stale lifecycle mutation was applied`
+  };
+}
+function disconnectLifecycleBlock() {
+  try {
+    return hasDisconnectTransition() ? {
+      ok: false,
+      note: "DISCONNECT_PENDING: lifecycle changes are fenced; rerun `engager-agent disconnect` to recover or finish teardown"
+    } : null;
+  } catch {
+    return {
+      ok: false,
+      note: "DISCONNECT_PENDING: disconnect-transition.json is unsafe; preserve it and run `engager-agent doctor`"
+    };
   }
 }
 function unsafeLifecycleOwner(detail) {
@@ -15468,9 +15923,27 @@ var fmtAge = (timestamp, now) => {
 };
 function statusCommand(json) {
   const transitionPending = hasUpgradeTransition();
-  if (transitionPending) process.exitCode = 1;
+  let disconnectTransition = null;
+  let disconnectUnsafe = false;
+  let disconnectReceipt = null;
+  let disconnectReceiptUnsafe = false;
+  try {
+    const transition = readDisconnectTransition();
+    disconnectTransition = transition ? safeDisconnectProgress(transition) : null;
+  } catch {
+    disconnectUnsafe = true;
+  }
+  try {
+    disconnectReceipt = readSanitizedDisconnectReceipt();
+  } catch {
+    disconnectReceiptUnsafe = true;
+  }
   const now = Date.now();
   const config2 = loadConfig();
+  const mode = configFileMode();
+  const configPresent = configPathPresent();
+  const disconnectReceiptSafetyBlock = disconnectReceiptUnsafe && !config2 && !configPresent && !disconnectTransition;
+  if (transitionPending || disconnectTransition || disconnectUnsafe || disconnectReceiptSafetyBlock) process.exitCode = 1;
   const status = readStatus();
   const halt = readHalt();
   const pause = readPause(now);
@@ -15480,7 +15953,7 @@ function statusCommand(json) {
   const unsafeLock = executionLock.state === "invalid" || maintenanceLock.state === "invalid";
   if (unsafeLock) process.exitCode = 1;
   const alive = status != null && executionLock.state === "active" && executionLock.pid === status.pid;
-  const verdict = unsafeLock ? "LOCK SAFETY BLOCK \u2014 run `engager-agent doctor` before any lifecycle action" : transitionPending ? "UPGRADE RECOVERY REQUIRED \u2014 run `engager-agent upgrade`, `engager-agent start`, or `engager-agent service repair`" : halt ? `HALTED \u2014 ${halt.reason}` : !config2 ? configFileMode() != null && configFileMode() !== 384 ? "configuration blocked \u2014 agent.json must be 0600" : "not configured" : alive ? pause ? "paused locally" : `running \u2014 ${status.state}` : service.loaded ? "service loaded; waiting for runner heartbeat" : "not running";
+  const verdict = unsafeLock ? "LOCK SAFETY BLOCK \u2014 run `engager-agent doctor` before any lifecycle action" : disconnectUnsafe ? "DISCONNECT SAFETY BLOCK \u2014 preserve disconnect-transition.json and run `engager-agent doctor`" : disconnectReceiptSafetyBlock ? "DISCONNECT RECEIPT SAFETY BLOCK \u2014 preserve disconnect-receipt.json and run `engager-agent doctor`" : disconnectTransition ? `DISCONNECT PENDING (${disconnectTransition.phase}) \u2014 rerun \`engager-agent disconnect\`` : transitionPending ? "UPGRADE RECOVERY REQUIRED \u2014 run `engager-agent upgrade`, `engager-agent start`, or `engager-agent service repair`" : halt ? `HALTED \u2014 ${halt.reason}` : !config2 ? configPresent ? mode !== 384 ? "configuration blocked \u2014 agent.json must be 0600" : "configuration is invalid \u2014 preserve agent.json and run doctor" : disconnectReceipt ? `disconnected \u2014 receipt ${disconnectReceipt.receiptId}` : "not configured" : alive ? pause ? "paused locally" : `running \u2014 ${status.state}` : service.loaded ? "service loaded; waiting for runner heartbeat" : "not running";
   const safeConfig = config2 ? {
     mcpUrl: config2.mcpUrl,
     runnerId: config2.runnerId,
@@ -15491,7 +15964,7 @@ function statusCommand(json) {
   } : null;
   if (json) {
     process.stdout.write(
-      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service, transitionPending, locks: { execution: executionLock, maintenance: maintenanceLock } }, null, 2)}
+      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service, transitionPending, disconnectTransition, disconnectUnsafe, disconnectReceipt, disconnectReceiptUnsafe, disconnectReceiptSafetyBlock, locks: { execution: executionLock, maintenance: maintenanceLock } }, null, 2)}
 `
     );
     return;
@@ -15520,6 +15993,12 @@ function statusCommand(json) {
     }
     if (status.nextPollAt && alive) lines.push(`  next control poll ${new Date(status.nextPollAt).toLocaleTimeString()}`);
   }
+  if (disconnectTransition?.verificationUri && disconnectTransition.userCode) {
+    lines.push(`  disconnect approval ${disconnectTransition.verificationUri} \xB7 code ${disconnectTransition.userCode}`);
+  }
+  if (!config2 && !configPresent && !disconnectTransition && disconnectReceipt) {
+    lines.push(`  disconnect receipt ${disconnectReceipt.receiptId} \xB7 acknowledged ${new Date(disconnectReceipt.completedAt).toISOString()}`);
+  }
   lines.push(
     `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`
   );
@@ -15527,24 +16006,32 @@ function statusCommand(json) {
     `  locks execution ${executionLock.state}${executionLock.pid ? ` (pid ${executionLock.pid})` : ""} \xB7 maintenance ${maintenanceLock.state}${maintenanceLock.pid ? ` (pid ${maintenanceLock.pid})` : ""}`
   );
   lines.push(
-    config2 ? "  next: engager-agent doctor" : "  next: engager-agent setup"
+    config2 ? "  next: engager-agent doctor" : !configPresent && disconnectReceipt ? "  next: no action required; run setup only to reconnect" : "  next: engager-agent setup"
   );
   process.stdout.write(`${lines.join("\n")}
 `);
 }
-function pauseCommand(duration3) {
+var REAL_PAUSE_DEPS = {
+  pause: pauseAgentWithMaintenance,
+  write: writePause,
+  now: Date.now,
+  output: log
+};
+function pauseCommand(duration3, deps = REAL_PAUSE_DEPS) {
   let until;
   if (duration3) {
     const milliseconds = parseDuration(duration3);
     if (milliseconds == null) {
-      log(`could not parse duration "${duration3}" \u2014 use 30m, 2h, or 1d`);
+      deps.output(`could not parse duration "${sanitizeSensitiveText(duration3)}" \u2014 use 30m, 2h, or 1d`);
       process.exitCode = 1;
       return;
     }
-    until = Date.now() + milliseconds;
+    until = deps.now() + milliseconds;
   }
-  writePause(until);
-  log(`paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}`);
+  const result = deps.pause(() => deps.write(until));
+  deps.output(result.ok ? `paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}` : result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "pause", detail: result.note });
+  if (!result.ok) process.exitCode = 1;
 }
 var REAL_RESUME_DEPS = {
   resume: resumeAgentWithMaintenance,
@@ -15572,6 +16059,7 @@ function resumeCommand(deps = REAL_RESUME_DEPS) {
     }
   });
   deps.output(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "resume", detail: result.note });
   if (!result.ok) process.exitCode = 1;
 }
 var REAL_STOP_DEPS = {
@@ -15581,13 +16069,15 @@ var REAL_STOP_DEPS = {
 function stopCommand(deps = REAL_STOP_DEPS) {
   const result = deps.stop();
   deps.output(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "stop", detail: result.note });
   if (!result.ok) process.exitCode = 1;
 }
 function startCommand() {
   const state = serviceState();
-  if (!shouldEnterServiceLifecycle(state.installed, hasUpgradeTransition())) return false;
+  if (!shouldEnterServiceLifecycle(state.installed, hasUpgradeTransition() || hasDisconnectTransition())) return false;
   const result = startServiceWithMaintenance();
   log(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "start", detail: result.note });
   if (!result.ok) process.exitCode = 1;
   return true;
 }
@@ -15606,10 +16096,11 @@ function serviceCommand(action, version2) {
     return;
   }
   log(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: `service:${action}`, detail: result.note });
   if (!result.ok) process.exitCode = 1;
 }
 function logsCommand(lines = 80) {
-  const directory = join9(agentHome(), "logs");
+  const directory = join10(agentHome(), "logs");
   if (!existsSync7(directory)) {
     process.stdout.write("No runner logs yet.\n");
     return;
@@ -15621,14 +16112,14 @@ function logsCommand(lines = 80) {
     return;
   }
   const count = Number.isFinite(lines) ? Math.min(1e3, Math.max(1, Math.floor(lines))) : 80;
-  const safe = sanitizeLogText(readFileSync8(join9(directory, latest), "utf8"));
+  const safe = sanitizeLogText(readFileSync9(join10(directory, latest), "utf8"));
   const tail = safe.split("\n").slice(-count);
   process.stdout.write(`${tail.join("\n")}
 `);
 }
 function sanitizeLogText(value) {
-  const redacted = redact(value, [loadConfig()?.apiKey]).replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]").replace(/("?(?:api[_-]?key|token|secret)"?\s*[:=]\s*)"?[^\s",}]+"?/gi, "$1[REDACTED]");
-  return redacted.split(/\r?\n/).map((line) => sanitizeTerminalText(line)).join("\n");
+  const secrets = redactionSecrets();
+  return value.split(/\r?\n/).map((line) => sanitizeSensitiveText(line, secrets)).join("\n");
 }
 function parseDuration(value) {
   const match = /^(\d+(?:\.\d+)?)\s*(m|min|h|hr|d)$/i.exec(value.trim());
@@ -15670,8 +16161,8 @@ import { spawnSync as spawnSync4 } from "node:child_process";
 
 // src/engine.ts
 import { fork, spawn, spawnSync as spawnSync3 } from "node:child_process";
-import { accessSync, constants as constants3, existsSync as existsSync8, realpathSync as realpathSync2 } from "node:fs";
-import { delimiter, dirname as dirname3, isAbsolute as isAbsolute3, join as join10 } from "node:path";
+import { accessSync, constants as constants4, existsSync as existsSync8, realpathSync as realpathSync2 } from "node:fs";
+import { delimiter, dirname as dirname3, isAbsolute as isAbsolute3, join as join11 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 function resolveEngineExecutable(name, preferred) {
   let raw = preferred ?? "";
@@ -15689,7 +16180,7 @@ function resolveEngineExecutable(name, preferred) {
   if (!raw || !isAbsolute3(raw)) return null;
   try {
     const path = realpathSync2(raw);
-    accessSync(path, constants3.X_OK);
+    accessSync(path, constants4.X_OK);
     if (/(?:^|\/)(?:_npx|\.hermes|Caches?|tmp|\.cache)(?:\/|$)/i.test(path)) return null;
     return path;
   } catch {
@@ -15841,13 +16332,13 @@ async function terminateKnownProcessGroup(pid, graceMs) {
 function resolveWatchdogPath(override) {
   const candidates = [
     override,
-    process.argv[1] ? join10(dirname3(realpathSync2(process.argv[1])), "engine-watchdog.mjs") : void 0,
+    process.argv[1] ? join11(dirname3(realpathSync2(process.argv[1])), "engine-watchdog.mjs") : void 0,
     fileURLToPath2(new URL("../bundle/engine-watchdog.mjs", import.meta.url))
   ];
   for (const candidate of candidates) {
     if (!candidate || !existsSync8(candidate)) continue;
     const path = realpathSync2(candidate);
-    accessSync(path, constants3.R_OK);
+    accessSync(path, constants4.R_OK);
     return path;
   }
   throw new Error("engine-watchdog.mjs was not found beside the runner bundle");
@@ -15873,7 +16364,7 @@ function isProcessResult(value) {
 }
 function deserializeFault(value) {
   if (!isRecord2(value)) return watchdogFault("engine watchdog returned an invalid failure");
-  const code = typeof value.code === "string" && RUNNER_ERROR_CODES.includes(value.code) ? value.code : "ENGINE_FAILED";
+  const code = isRunnerErrorCode(value.code) ? value.code : "ENGINE_FAILED";
   return new RunnerFault(
     code,
     typeof value.message === "string" ? value.message : "engine watchdog reported a failure",
@@ -16362,18 +16853,18 @@ function firstLine(value) {
 import { spawnSync as spawnSync5 } from "node:child_process";
 import {
   chmodSync as chmodSync7,
-  closeSync as closeSync3,
-  constants as constants4,
-  fstatSync as fstatSync2,
-  lstatSync as lstatSync6,
+  closeSync as closeSync4,
+  constants as constants5,
+  fstatSync as fstatSync3,
+  lstatSync as lstatSync7,
   mkdtempSync as mkdtempSync2,
-  openSync as openSync3,
+  openSync as openSync4,
   readSync,
   rmSync as rmSync6,
   writeFileSync as writeFileSync4
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as join11 } from "node:path";
+import { join as join12 } from "node:path";
 var CODEX_CERTIFIED_VERSION = /^0\.135\./;
 var MAX_CODEX_RESULT_BYTES = 256 * 1024;
 var CODEX_DISABLED_FEATURES = [
@@ -16482,7 +16973,7 @@ var CodexEngine = class {
         detail: `unsupported Codex CLI ${version2 ?? "version"}; this closed-beta runner certifies 0.135.x`
       });
     }
-    const probeHome = mkdtempSync2(join11(tmpdir(), "engager-codex-probe-"));
+    const probeHome = mkdtempSync2(join12(tmpdir(), "engager-codex-probe-"));
     let featureDetail;
     try {
       const features = spawnSync5(executable, codexFeatureProbeArgs(), {
@@ -16555,8 +17046,8 @@ ${auth2.stderr ?? ""}`;
         recovery: "Run `engager-agent setup` to pin a trusted Codex installation."
       });
     }
-    const schemaPath = join11(request.workingDirectory, "proposal.schema.json");
-    const resultPath = join11(request.workingDirectory, "proposal.json");
+    const schemaPath = join12(request.workingDirectory, "proposal.schema.json");
+    const resultPath = join12(request.workingDirectory, "proposal.json");
     writeFileSync4(schemaPath, JSON.stringify(codexProposalJsonSchema(request.lane)), { mode: 384 });
     chmodSync7(schemaPath, 384);
     const started = Date.now();
@@ -16599,12 +17090,12 @@ ${auth2.stderr ?? ""}`;
 };
 function readCodexResultFile(path, maxBytes = MAX_CODEX_RESULT_BYTES) {
   try {
-    const link = lstatSync6(path);
+    const link = lstatSync7(path);
     if (!link.isFile() || link.isSymbolicLink()) throw new Error("result is not a regular file");
-    const noFollow = typeof constants4.O_NOFOLLOW === "number" ? constants4.O_NOFOLLOW : 0;
-    const fd = openSync3(path, constants4.O_RDONLY | noFollow);
+    const noFollow = typeof constants5.O_NOFOLLOW === "number" ? constants5.O_NOFOLLOW : 0;
+    const fd = openSync4(path, constants5.O_RDONLY | noFollow);
     try {
-      const stat = fstatSync2(fd);
+      const stat = fstatSync3(fd);
       if (!stat.isFile() || stat.size > maxBytes) throw new Error("result exceeds the byte ceiling");
       const bytes = Buffer.alloc(maxBytes + 1);
       let total = 0;
@@ -16616,7 +17107,7 @@ function readCodexResultFile(path, maxBytes = MAX_CODEX_RESULT_BYTES) {
       if (total > maxBytes) throw new Error("result exceeded the byte ceiling while reading");
       return bytes.subarray(0, total).toString("utf8");
     } finally {
-      closeSync3(fd);
+      closeSync4(fd);
     }
   } catch (error2) {
     throw invalidOutput2(`Codex result must be a regular file no larger than ${maxBytes} bytes`, error2);
@@ -25739,17 +26230,17 @@ function requestSecrets(apiKey, args) {
 import { randomUUID as randomUUID7 } from "node:crypto";
 import {
   existsSync as existsSync9,
-  lstatSync as lstatSync7,
-  readFileSync as readFileSync9
+  lstatSync as lstatSync8,
+  readFileSync as readFileSync10
 } from "node:fs";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 var SessionUsageSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
   day: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   attemptIds: external_exports.array(external_exports.string().uuid()).max(100)
 }).strict();
 function sessionUsagePath() {
-  return join12(agentHome(), "session-usage.json");
+  return join13(agentHome(), "session-usage.json");
 }
 function reserveProviderSession(attemptId = randomUUID7(), startedAt = Date.now()) {
   const id = external_exports.string().uuid().parse(attemptId);
@@ -25773,12 +26264,12 @@ function readUsage() {
   const path = sessionUsagePath();
   if (!existsSync9(path)) return null;
   try {
-    const stat = lstatSync7(path);
+    const stat = lstatSync8(path);
     const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
     if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
       throw new Error("provider session ledger permissions are not private");
     }
-    return SessionUsageSchema.parse(JSON.parse(readFileSync9(path, "utf8")));
+    return SessionUsageSchema.parse(JSON.parse(readFileSync10(path, "utf8")));
   } catch (error2) {
     throw usageFault("provider session ledger is corrupt or unsafe", error2);
   }
@@ -25798,9 +26289,16 @@ function usageFault(message, cause) {
 // src/doctor.ts
 async function runDoctor(config2, now = Date.now()) {
   const checks = [];
+  let activeDisconnectPhase = null;
+  try {
+    activeDisconnectPhase = readDisconnectTransition()?.phase ?? null;
+  } catch {
+  }
   addRecoveryCheck(checks, config2, now);
   addLockChecks(checks, config2);
   checks.push(diagnoseUpgradeTransition());
+  checks.push(diagnoseDisconnectTransition());
+  checks.push(diagnoseDisconnectReceipt());
   try {
     const sessions = providerSessionsToday(now);
     checks.push({
@@ -25818,12 +26316,21 @@ async function runDoctor(config2, now = Date.now()) {
   }
   if (!config2) {
     const mode = configFileMode();
+    const configPresent = configPathPresent();
+    let completedDisconnect = null;
+    try {
+      completedDisconnect = readSanitizedDisconnectReceipt();
+    } catch {
+    }
+    const bearerlessRecovery = activeDisconnectPhase === "pending" || activeDisconnectPhase === "approved" || activeDisconnectPhase === "acknowledged";
+    const preStartRecovery = activeDisconnectPhase === "prepared" || activeDisconnectPhase === "quiesced";
     checks.push({
       name: "configuration",
-      status: "fail",
-      detail: mode != null && mode !== 384 ? `agent.json is unsafe (${mode.toString(8)}); the runner refused to read or transmit its credential` : "runner is not configured or the saved configuration is invalid",
-      recovery: mode != null && mode !== 384 ? "Run `chmod 600 ~/.engager/agent.json`, then rerun doctor." : "Run `engager-agent setup`."
+      status: configPresent && mode !== 384 ? "fail" : completedDisconnect && !activeDisconnectPhase && !configPresent ? "pass" : bearerlessRecovery ? "warn" : "fail",
+      detail: configPresent && mode !== 384 ? `agent.json is unsafe${mode == null ? " or not a regular file" : ` (${mode.toString(8)})`}; the runner refused to read or transmit its credential` : bearerlessRecovery ? `agent.json is unavailable; phase ${activeDisconnectPhase} recovery is bearerless and remains available from the private challenge journal` : completedDisconnect && !activeDisconnectPhase && !configPresent ? `agent.json is absent because runner disconnect receipt ${completedDisconnect.receiptId} completed local teardown` : preStartRecovery ? `agent.json is unavailable but phase ${activeDisconnectPhase} still requires the exact original credential binding` : "runner is not configured or the saved configuration is invalid",
+      recovery: configPresent && mode !== 384 ? "Repair agent.json into an owned private 0600 regular file, then rerun doctor." : bearerlessRecovery ? "Rerun `engager-agent disconnect`; do not create replacement credentials or replace the recovery journal." : completedDisconnect && !activeDisconnectPhase && !configPresent ? "No action is required; run `engager-agent setup` only to connect this machine again." : preStartRecovery ? "Restore the exact original private agent.json, then rerun `engager-agent disconnect`." : "Run `engager-agent setup`."
     });
+    checks.push(diagnoseService());
     return report(checks);
   }
   checks.push({
@@ -25832,6 +26339,24 @@ async function runDoctor(config2, now = Date.now()) {
     detail: configMode() === 384 ? "agent.json is private (0600)" : "agent.json permissions are not 0600",
     ...configMode() === 384 ? {} : { recovery: "Run `chmod 600 ~/.engager/agent.json`." }
   });
+  if (activeDisconnectPhase) {
+    checks.push(
+      {
+        name: `engine:${config2.engine}`,
+        status: "warn",
+        detail: `provider detection skipped while disconnect recovery is at phase ${activeDisconnectPhase}`,
+        recovery: "Rerun `engager-agent disconnect` before provider diagnostics."
+      },
+      {
+        name: "server",
+        status: "warn",
+        detail: `credential probe skipped while disconnect recovery is at phase ${activeDisconnectPhase}`,
+        recovery: "Rerun `engager-agent disconnect`; its bearerless recovery path remains authoritative."
+      },
+      diagnoseService()
+    );
+    return report(checks);
+  }
   const engine = await engineFor(
     config2.engine,
     config2.enginePath,
@@ -25862,14 +26387,17 @@ async function runDoctor(config2, now = Date.now()) {
   } finally {
     await mcp.close();
   }
+  checks.push(diagnoseService());
+  return report(checks);
+}
+function diagnoseService() {
   const service = serviceState();
-  checks.push({
+  return {
     name: "service",
     status: !service.supported || service.installed && !service.entryExists ? "warn" : "pass",
     detail: !service.supported ? "native background service is not supported on this platform; foreground run is available" : !service.installed ? "not installed (optional)" : service.entryExists ? `installed${service.loaded ? ", loaded" : ", stopped"}` : "installed service entry is missing",
     ...service.installed && !service.entryExists ? { recovery: "Run `engager-agent service install --repair`." } : {}
-  });
-  return report(checks);
+  };
 }
 function diagnoseUpgradeTransition() {
   try {
@@ -25893,6 +26421,54 @@ function diagnoseUpgradeTransition() {
       status: "fail",
       detail: "upgrade-transition.json is corrupt, unsafe, or not a private regular file",
       recovery: "Preserve the journal and run `engager-agent service repair` or `engager-agent upgrade` after repairing ~/.engager ownership/permissions."
+    };
+  }
+}
+function diagnoseDisconnectTransition() {
+  try {
+    const transition = readDisconnectTransition();
+    if (!transition) {
+      return {
+        name: "disconnect-transition",
+        status: "pass",
+        detail: "no interrupted runner disconnect"
+      };
+    }
+    const safe = safeDisconnectProgress(transition);
+    const approval = safe.verificationUri && safe.userCode ? `; owner approval ${safe.verificationUri} code ${safe.userCode}` : "";
+    return {
+      name: "disconnect-transition",
+      status: "fail",
+      detail: `runner disconnect remains at phase ${safe.phase}${approval}`,
+      recovery: "Rerun `engager-agent disconnect`; execution and lifecycle mutations remain fail-closed until recovery completes."
+    };
+  } catch {
+    return {
+      name: "disconnect-transition",
+      status: "fail",
+      detail: "disconnect-transition.json is corrupt, unsafe, or not a private regular file",
+      recovery: "Preserve the journal, repair ~/.engager ownership/permissions, and rerun `engager-agent disconnect`."
+    };
+  }
+}
+function diagnoseDisconnectReceipt() {
+  try {
+    const receipt = readSanitizedDisconnectReceipt();
+    return receipt ? {
+      name: "disconnect-receipt",
+      status: "pass",
+      detail: `acknowledged receipt ${receipt.receiptId} is retained without bearer or device authority`
+    } : {
+      name: "disconnect-receipt",
+      status: "pass",
+      detail: "no completed disconnect receipt"
+    };
+  } catch {
+    return {
+      name: "disconnect-receipt",
+      status: "fail",
+      detail: "disconnect-receipt.json is corrupt, unsafe, or not a private regular file",
+      recovery: "Preserve the receipt and repair ~/.engager ownership/permissions before trusting local teardown evidence."
     };
   }
 }
@@ -25987,6 +26563,565 @@ function report(checks) {
   };
 }
 
+// src/disconnect.ts
+import { randomUUID as randomUUID8 } from "node:crypto";
+var PollPendingSchema = external_exports.object({
+  protocolVersion: external_exports.literal(1),
+  status: external_exports.literal("pending"),
+  expiresAt: external_exports.number().int().nonnegative(),
+  intervalSec: external_exports.literal(5)
+}).strict();
+var PollTerminalSchema = external_exports.union([
+  external_exports.object({ protocolVersion: external_exports.literal(1), status: external_exports.enum(["denied", "expired"]) }).strict(),
+  external_exports.object({ status: external_exports.literal("not_found") }).strict()
+]);
+var PollApprovedSchema = external_exports.object({
+  protocolVersion: external_exports.literal(1),
+  status: external_exports.enum(["approved", "acknowledged"]),
+  receipt: DisconnectReceiptSchema,
+  ackToken: external_exports.string().regex(/^engra_[A-Za-z0-9_-]{43}$/)
+}).strict();
+var PollResponseSchema = external_exports.union([PollPendingSchema, PollTerminalSchema, PollApprovedSchema]);
+var AckResponseSchema = external_exports.union([
+  external_exports.object({ status: external_exports.literal("acknowledged"), receiptId: external_exports.string().uuid() }).strict(),
+  external_exports.object({ status: external_exports.literal("not_found") }).strict()
+]);
+var REAL_DISCONNECT_DEPS = {
+  load: loadConfig,
+  configMode: configFileMode,
+  configPresent: configPathPresent,
+  read: readDisconnectTransition,
+  write: writeDisconnectTransition,
+  advance: advanceDisconnectTransition,
+  clear: clearDisconnectTransition,
+  receipt: writeSanitizedDisconnectReceipt,
+  completedReceipt: readSanitizedDisconnectReceipt,
+  maintenance: acquireMaintenanceLock,
+  execution: (runnerId, maintenanceToken) => acquireRunnerLock(runnerId, void 0, maintenanceToken),
+  service: serviceState,
+  serviceDisabled: serviceDisabledState,
+  setDisabled: setServiceDisabled,
+  stop: stopService,
+  start: startServiceWithMaintenanceToken,
+  uninstall: uninstallService,
+  owner: inspectRunnerLock,
+  ownerLive: isLockOwnerLive,
+  signal: (pid, signal) => process.kill(pid, signal),
+  request: (url2, init) => fetch(url2, init),
+  now: Date.now,
+  pause: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  remove: removePathDurably
+};
+async function disconnectAgent(deps = REAL_DISCONNECT_DEPS) {
+  let transition;
+  try {
+    transition = deps.read();
+  } catch (error2) {
+    throw protocolFault(`local disconnect journal could not be read safely: ${bounded(error2)}`);
+  }
+  if (!transition && !deps.load() && deps.configMode() == null && !deps.configPresent()) {
+    let completed;
+    try {
+      completed = deps.completedReceipt();
+    } catch (error2) {
+      throw cleanupFault(`sanitized disconnect receipt is unsafe: ${bounded(error2)}`, error2);
+    }
+    if (completed) {
+      return {
+        ok: true,
+        status: "disconnected",
+        receiptId: completed.receiptId,
+        recoveredFromReceipt: true
+      };
+    }
+  }
+  if (!transition) transition = prepare(deps);
+  if (transition.phase === "prepared") transition = quiesce(transition, deps);
+  if (transition.phase === "quiesced") transition = await startRequest(transition, deps);
+  if (transition.phase === "pending") {
+    deps.onProgress?.(safeDisconnectProgress(transition));
+    transition = await awaitDecision(transition, deps);
+    if (transition.phase === "pending") {
+      throw pendingFault(transition);
+    }
+  }
+  if (transition.phase === "approved") transition = await acknowledge(transition, deps);
+  if (transition.phase === "acknowledged") return finishCleanup(transition, deps);
+  throw protocolFault(`unsupported local disconnect phase ${transition.phase}`);
+}
+function disconnectAgentWithProgress(onProgress) {
+  return disconnectAgent({ ...REAL_DISCONNECT_DEPS, onProgress });
+}
+function prepare(deps) {
+  const configSnapshot = deps.load();
+  if (!configSnapshot) {
+    throw new RunnerFault("RUNNER_NOT_CONFIGURED", "no runner credential is available to start disconnect", {
+      impact: "No revocation request was sent and no local state was changed.",
+      recovery: "Run `engager-agent setup`, or preserve and repair agent.json if disconnect is still required."
+    });
+  }
+  if (hasUpgradeTransition()) {
+    throw new RunnerFault("RUNNER_ALREADY_ACTIVE", "an upgrade transition must be recovered before disconnect", {
+      impact: "No disconnect request was started against an ambiguous runtime payload.",
+      recovery: "Complete `engager-agent upgrade` or `engager-agent service repair`, then retry disconnect.",
+      retryable: true
+    });
+  }
+  const maintenance = deps.maintenance(configSnapshot.runnerId);
+  try {
+    if (hasUpgradeTransition()) {
+      throw new RunnerFault("RUNNER_ALREADY_ACTIVE", "an upgrade transition started before disconnect could establish its fence", {
+        impact: "No disconnect request was started against an ambiguous runtime payload.",
+        recovery: "Complete the upgrade recovery, then retry disconnect.",
+        retryable: true
+      });
+    }
+    const config2 = deps.load();
+    if (!config2 || !sameConfigSnapshot(configSnapshot, config2)) {
+      throw new RunnerFault(
+        "RUNNER_NOT_CONFIGURED",
+        "runner configuration changed while disconnect was acquiring maintenance",
+        {
+          impact: "No disconnect fence or revocation request was created from the stale credential snapshot.",
+          recovery: "Inspect `engager-agent status`, then retry disconnect from the current binding.",
+          retryable: true
+        }
+      );
+    }
+    const existing = deps.read();
+    if (existing) throw pendingFault(existing);
+    const state = deps.service();
+    const disabled = deps.serviceDisabled();
+    if (state.loaded && (!state.installed || !state.entryExists || disabled == null)) {
+      throw new RunnerFault(
+        "SERVICE_ENTRY_MISSING",
+        "the loaded background service does not have a fully restorable entry and launchd intent",
+        {
+          impact: "Disconnect did not stop the service or send a revocation request.",
+          recovery: "Run `engager-agent service repair`, verify `engager-agent doctor`, then retry disconnect."
+        }
+      );
+    }
+    const prepared = deps.write({
+      schemaVersion: 1,
+      protocolVersion: RUNNER_DISCONNECT_PROTOCOL_VERSION,
+      phase: "prepared",
+      createdAt: deps.now(),
+      clientRequestId: randomUUID8(),
+      mcpUrl: new URL(config2.mcpUrl).toString(),
+      runnerId: config2.runnerId,
+      credentialFingerprint: credentialFingerprint(config2.apiKey),
+      priorService: {
+        supported: state.supported,
+        installed: state.installed,
+        entryExists: state.entryExists,
+        loaded: state.loaded,
+        disabled
+      }
+    });
+    recordTransition(prepared);
+    return prepared;
+  } catch (error2) {
+    if (error2 instanceof RunnerFault) throw error2;
+    throw protocolFault(`disconnect preparation could not be committed safely: ${bounded(error2)}`);
+  } finally {
+    maintenance.release();
+  }
+}
+function quiesce(transition, deps) {
+  const maintenance = deps.maintenance(transition.runnerId);
+  let barrier = null;
+  try {
+    const current = deps.read();
+    if (!current) throw new Error("disconnect transition disappeared before quiesce");
+    if (current.clientRequestId !== transition.clientRequestId) {
+      throw new Error("a different disconnect transition owns local recovery");
+    }
+    if (current.phase !== "prepared") return current;
+    transition = current;
+    const currentService = deps.service();
+    if (currentService.supported && currentService.loaded) {
+      const stopped = deps.stop();
+      if (!stopped.ok) throw new Error(stopped.note);
+    }
+    const owner = deps.owner(transition.runnerId);
+    if (owner.state === "invalid") throw new Error(`execution lock is unsafe: ${owner.detail}`);
+    if (owner.state === "valid" && deps.ownerLive(owner.owner)) {
+      deps.signal(owner.owner.pid, "SIGTERM");
+    }
+    barrier = acquireBarrier(deps, transition.runnerId, maintenance.owner.token);
+    const next = deps.advance(transition, "quiesced");
+    recordTransition(next);
+    return next;
+  } catch (error2) {
+    try {
+      rollbackPreStart(transition, maintenance, deps);
+    } catch (rollbackError) {
+      throw new RunnerFault("DISCONNECT_PROTOCOL_ERROR", `${bounded(error2)}; prior service restoration is incomplete: ${bounded(rollbackError)}`, {
+        impact: "No revocation request was sent, but the disconnect fence remains active because prior service intent could not be restored safely.",
+        recovery: "Repair the lifecycle issue, then rerun `engager-agent disconnect` to recover the prepared transition.",
+        retryable: true,
+        cause: rollbackError
+      });
+    }
+    throw new RunnerFault("DISCONNECT_PROTOCOL_ERROR", bounded(error2), {
+      impact: "No revocation request was sent; the disconnect fence was cleared after attempting to restore prior service intent.",
+      recovery: "Run `engager-agent doctor`, repair the reported lifecycle issue, then retry disconnect.",
+      cause: error2
+    });
+  } finally {
+    barrier?.release();
+    maintenance.release();
+  }
+}
+function acquireBarrier(deps, runnerId, token) {
+  let last;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      return deps.execution(runnerId, token);
+    } catch (error2) {
+      last = error2;
+      const wait = new Int32Array(new SharedArrayBuffer(4));
+      Atomics.wait(wait, 0, 0, 50);
+    }
+  }
+  throw new Error(`execution did not quiesce: ${bounded(last)}`);
+}
+async function startRequest(transition, deps) {
+  const config2 = exactConfig(transition, deps.load());
+  const response = await remote(
+    new URL("/runner-disconnect/start", transition.mcpUrl),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${config2.apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        protocolVersion: 1,
+        clientRequestId: transition.clientRequestId,
+        runnerId: transition.runnerId,
+        clientName: "engager-agent"
+      })
+    },
+    deps,
+    true
+  );
+  if (!response.ok) {
+    if (response.safeToRollbackStart) {
+      const current = restoreAfterTerminal(transition, "quiesced", deps);
+      if (current) return current;
+    }
+    throw response.fault;
+  }
+  const parsed = DisconnectStartSchema.safeParse(response.body);
+  if (!parsed.success) throw protocolFault("disconnect start response failed strict schema validation");
+  validateStartBinding(transition, parsed.data, deps.now());
+  const next = commitPhase(transition, "pending", { start: parsed.data }, deps);
+  recordTransition(next);
+  deps.onProgress?.(safeDisconnectProgress(next));
+  return next;
+}
+async function awaitDecision(transition, deps) {
+  let current = transition;
+  for (; ; ) {
+    const start = current.start;
+    const response = await remote(
+      new URL("/runner-disconnect/poll", current.mcpUrl),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deviceCode: start.deviceCode })
+      },
+      deps,
+      false
+    );
+    if (!response.ok) throw response.fault;
+    const parsed = PollResponseSchema.safeParse(response.body);
+    if (!parsed.success) throw protocolFault("disconnect poll response failed strict schema validation");
+    if (parsed.data.status === "pending") {
+      if (parsed.data.expiresAt !== start.expiresAt) {
+        throw protocolFault("disconnect poll expiry changed from the committed challenge");
+      }
+      if (deps.now() >= start.expiresAt) {
+        throw protocolFault("disconnect server still reports pending after the committed expiry");
+      }
+      await deps.pause(Math.max(1e3, parsed.data.intervalSec * 1e3));
+      continue;
+    }
+    if (parsed.data.status === "not_found") {
+      throw protocolFault("disconnect challenge disappeared after a committed start response");
+    }
+    if (parsed.data.status === "denied" || parsed.data.status === "expired") {
+      const status = parsed.data.status;
+      const concurrentlyAdvanced = restoreAfterTerminal(current, "pending", deps);
+      if (concurrentlyAdvanced) return concurrentlyAdvanced;
+      throw new RunnerFault(status === "denied" ? "DISCONNECT_DENIED" : "DISCONNECT_EXPIRED", `runner disconnect was ${parsed.data.status}`, {
+        impact: "The disconnect fence was cleared and prior service intent was restored; the credential was not accepted as revoked.",
+        recovery: status === "denied" ? "Retry only if disconnect is still intended." : "Run `engager-agent disconnect` for a new approval challenge."
+      });
+    }
+    if (parsed.data.status !== "approved" && parsed.data.status !== "acknowledged") {
+      throw protocolFault("disconnect poll returned an unsupported terminal state");
+    }
+    validateReceiptBinding(current, parsed.data.receipt);
+    current = commitPhase(current, "approved", {
+      approval: { receipt: parsed.data.receipt, ackToken: parsed.data.ackToken }
+    }, deps);
+    recordTransition(current);
+    return current;
+  }
+}
+async function acknowledge(transition, deps) {
+  const start = transition.start;
+  const approval = transition.approval;
+  const response = await remote(
+    new URL("/runner-disconnect/ack", transition.mcpUrl),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        deviceCode: start.deviceCode,
+        receiptId: approval.receipt.receiptId,
+        ackToken: approval.ackToken
+      })
+    },
+    deps,
+    false
+  );
+  if (!response.ok) throw cleanupFault(response.fault.message, response.fault);
+  const parsed = AckResponseSchema.safeParse(response.body);
+  if (!parsed.success || parsed.data.status !== "acknowledged" || parsed.data.receiptId !== approval.receipt.receiptId) {
+    throw cleanupFault("disconnect ACK response failed exact receipt binding validation");
+  }
+  const next = commitPhase(transition, "acknowledged", {}, deps);
+  recordTransition(next);
+  return next;
+}
+function finishCleanup(transition, deps) {
+  const maintenance = deps.maintenance(transition.runnerId);
+  try {
+    const current = deps.read();
+    if (!current) {
+      const expectedReceiptId = transition.approval.receipt.receiptId;
+      const completed = deps.completedReceipt();
+      if (!completed || completed.receiptId !== expectedReceiptId) {
+        throw cleanupFault("disconnect transition disappeared before exact sanitized completion evidence was committed");
+      }
+      return { ok: true, status: "disconnected", receiptId: expectedReceiptId };
+    }
+    if (current.clientRequestId !== transition.clientRequestId) {
+      throw cleanupFault("a different disconnect transition owns local cleanup");
+    }
+    transition = current;
+    const state = deps.service();
+    if (state.supported && state.installed) {
+      const removed = deps.uninstall();
+      if (!removed.ok) throw cleanupFault(removed.note);
+    }
+    for (const path of [
+      configPath(),
+      journalPath(),
+      haltPath(),
+      pausePath(),
+      statusPath(),
+      sessionUsagePath()
+    ]) {
+      deps.remove(path);
+    }
+    deps.receipt(transition);
+    const receiptId = transition.approval.receipt.receiptId;
+    deps.clear();
+    logEvent({
+      event: "disconnect.result",
+      level: "info",
+      runnerId: transition.runnerId,
+      phase: "complete",
+      detail: `disconnect receipt ${receiptId} acknowledged and local teardown completed`
+    });
+    return { ok: true, status: "disconnected", receiptId };
+  } catch (error2) {
+    if (error2 instanceof RunnerFault) throw error2;
+    throw cleanupFault(bounded(error2), error2);
+  } finally {
+    maintenance.release();
+  }
+}
+function rollbackPreStart(transition, maintenance, deps) {
+  restorePriorService(transition, maintenance, deps);
+  deps.clear();
+}
+function restoreAfterTerminal(transition, expectedPhase, deps) {
+  const maintenance = deps.maintenance(transition.runnerId);
+  try {
+    const current = deps.read();
+    if (!current) return null;
+    if (current.clientRequestId !== transition.clientRequestId) {
+      throw protocolFault("a different disconnect transition owns local recovery");
+    }
+    if (current.phase !== expectedPhase) return current;
+    restorePriorService(current, maintenance, deps);
+    deps.clear();
+    return null;
+  } catch (error2) {
+    if (error2 instanceof RunnerFault) throw error2;
+    throw new RunnerFault("DISCONNECT_PROTOCOL_ERROR", `terminal disconnect restoration is incomplete: ${bounded(error2)}`, {
+      impact: "The terminal decision is known, but execution remains fenced until captured service intent is restored.",
+      recovery: "Repair the service lifecycle issue, then rerun `engager-agent disconnect` to finish terminal recovery.",
+      retryable: true,
+      cause: error2
+    });
+  } finally {
+    maintenance.release();
+  }
+}
+function commitPhase(transition, phase, patch, deps) {
+  const maintenance = deps.maintenance(transition.runnerId);
+  try {
+    const current = deps.read();
+    if (!current || current.clientRequestId !== transition.clientRequestId) {
+      throw protocolFault("disconnect recovery ownership changed before a phase commit");
+    }
+    if (current.phase !== transition.phase) return current;
+    return deps.advance(current, phase, patch);
+  } catch (error2) {
+    if (error2 instanceof RunnerFault) throw error2;
+    throw protocolFault(`disconnect phase ${phase} could not be committed safely: ${bounded(error2)}`);
+  } finally {
+    maintenance.release();
+  }
+}
+function restorePriorService(transition, maintenance, deps) {
+  if (!transition.priorService.supported || !transition.priorService.installed) return;
+  if (transition.priorService.loaded) {
+    const restored = deps.start(maintenance.owner.token);
+    if (!restored.ok) {
+      throw new Error(`prior service state could not be restored: ${restored.note}`);
+    }
+    if (transition.priorService.disabled != null) {
+      const intent = deps.setDisabled(transition.priorService.disabled);
+      if (!intent.ok) throw new Error(`prior service intent could not be restored: ${intent.note}`);
+    }
+    return;
+  }
+  if (transition.priorService.disabled != null) {
+    const restored = deps.setDisabled(transition.priorService.disabled);
+    if (!restored.ok) throw new Error(`prior service intent could not be restored: ${restored.note}`);
+  }
+}
+function exactConfig(transition, config2) {
+  if (!config2 || new URL(config2.mcpUrl).toString() !== transition.mcpUrl || config2.runnerId !== transition.runnerId || credentialFingerprint(config2.apiKey) !== transition.credentialFingerprint) {
+    throw new RunnerFault("DISCONNECT_PROTOCOL_ERROR", "the saved credential no longer matches the prepared disconnect binding", {
+      impact: "No start request was sent with replacement or ambiguous authority.",
+      recovery: "Restore the exact original private agent.json and rerun disconnect, or preserve the transition for support."
+    });
+  }
+  return config2;
+}
+function validateStartBinding(transition, start, now) {
+  if (start.clientRequestId !== transition.clientRequestId || start.runnerId !== transition.runnerId || start.credentialFingerprint !== transition.credentialFingerprint) {
+    throw protocolFault("disconnect start response did not match the committed credential challenge");
+  }
+  const verification = new URL(start.verificationUri);
+  if (verification.username || verification.password || verification.hash || verification.pathname !== "/runner-disconnect" || verification.searchParams.size !== 1 || verification.searchParams.get("code") !== start.userCode || verification.protocol !== "https:" && !(verification.protocol === "http:" && isLoopbackHost(verification.hostname))) {
+    throw protocolFault("disconnect verification URL is not HTTPS or loopback HTTP");
+  }
+  if (start.expiresAt <= now || start.expiresAt > now + 30 * 6e4) {
+    throw protocolFault("disconnect challenge expiry is outside the v1 safety window");
+  }
+}
+function isLoopbackHost(hostname5) {
+  const host = hostname5.toLowerCase();
+  return host === "localhost" || host.endsWith(".localhost") || host === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+function validateReceiptBinding(transition, receipt) {
+  const start = transition.start;
+  if (receipt.requestId !== start.requestId || receipt.clientRequestId !== start.clientRequestId || receipt.organizationId !== start.organizationId || receipt.runnerId !== start.runnerId || receipt.credentialKeyId !== start.credentialKeyId || receipt.credentialFingerprint !== start.credentialFingerprint) {
+    throw protocolFault("disconnect receipt did not match the exact committed request and credential");
+  }
+  const { receiptHash, ...payload } = receipt;
+  if (disconnectReceiptHash(payload) !== receiptHash) {
+    throw protocolFault("disconnect receipt hash did not authenticate the exact returned payload");
+  }
+}
+async function remote(url2, init, deps, start) {
+  try {
+    const response = await deps.request(url2, {
+      ...init,
+      redirect: "error",
+      signal: AbortSignal.timeout(3e4)
+    });
+    const body = await readBoundedJson(response, MAX_DEVICE_AUTH_RESPONSE_BYTES);
+    if (response.ok) return { ok: true, body };
+    const record2 = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+    const remoteCode = typeof record2.code === "string" ? safeRemoteString(record2.code, deps, 80) : void 0;
+    const message = typeof record2.error === "string" ? safeRemoteString(record2.error, deps, 300) : `HTTP ${response.status}`;
+    return {
+      ok: false,
+      // Only a request-body rejection proves this invocation did not enter the
+      // server state machine. Auth/conflict responses can race another caller
+      // that already committed pending or approved authority.
+      safeToRollbackStart: start && response.status === 400,
+      fault: new RunnerFault("DISCONNECT_PROTOCOL_ERROR", `disconnect endpoint rejected the request: ${message}`, {
+        impact: start ? "No local credential was deleted." : "The durable disconnect recovery fence remains active.",
+        recovery: start && response.status === 400 ? "The pre-start fence was rolled back; fix configuration/server compatibility before retrying." : "Rerun `engager-agent disconnect`; the stable request and recovery authority will be replayed.",
+        retryable: response.status >= 500,
+        ...remoteCode ? { remoteCode } : {}
+      })
+    };
+  } catch (error2) {
+    return {
+      ok: false,
+      safeToRollbackStart: false,
+      fault: new RunnerFault("SERVER_UNREACHABLE", "runner disconnect endpoint is temporarily unreachable", {
+        impact: "The durable disconnect fence remains active; no ambiguous retry used a new request identity.",
+        recovery: "Rerun `engager-agent disconnect`; recovery reuses the committed request or bearerless challenge.",
+        retryable: true,
+        cause: error2
+      })
+    };
+  }
+}
+function pendingFault(transition) {
+  return new RunnerFault("DISCONNECT_PENDING", `runner disconnect recovery is pending at phase ${transition.phase}`, {
+    impact: "Execution and lifecycle mutations remain fenced until disconnect reaches a terminal result.",
+    recovery: "Rerun `engager-agent disconnect` to resume the same crash-safe transition.",
+    retryable: true
+  });
+}
+function protocolFault(message) {
+  return new RunnerFault("DISCONNECT_PROTOCOL_ERROR", message, {
+    impact: "The response was not trusted and the durable disconnect fence remains active.",
+    recovery: "Preserve the transition and rerun after server/runner compatibility is repaired."
+  });
+}
+function cleanupFault(message, cause) {
+  return new RunnerFault("DISCONNECT_CLEANUP_REQUIRED", message, {
+    impact: "The credential may already be revoked, but local teardown remains safely recoverable without it.",
+    recovery: "Rerun `engager-agent disconnect`; it resumes receipt ACK and cleanup without the bearer.",
+    retryable: true,
+    cause
+  });
+}
+function bounded(error2) {
+  return sanitizeSensitiveText(
+    error2 instanceof Error ? error2.message : String(error2),
+    redactionSecrets()
+  ).slice(0, 300) || "disconnect operation failed";
+}
+function safeRemoteString(value, deps, max) {
+  return sanitizeSensitiveText(value, [...redactionSecrets(), deps.load()?.apiKey]).slice(0, max);
+}
+function recordTransition(transition) {
+  logEvent({
+    event: "disconnect.transition",
+    level: transition.phase === "approved" || transition.phase === "acknowledged" ? "warn" : "info",
+    runnerId: transition.runnerId,
+    phase: transition.phase,
+    detail: `runner disconnect advanced to ${transition.phase}`
+  });
+}
+
 // src/heartbeat.ts
 import { hostname as hostname3 } from "node:os";
 function buildHeartbeat(config2, version2, state) {
@@ -26045,10 +27180,10 @@ async function controlPoll(config2, version2, state) {
 }
 
 // src/executor.ts
-import { createHash as createHash4, randomUUID as randomUUID8 } from "node:crypto";
+import { createHash as createHash5, randomUUID as randomUUID9 } from "node:crypto";
 import { chmodSync as chmodSync8, mkdtempSync as mkdtempSync3, rmSync as rmSync7 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
-import { join as join13 } from "node:path";
+import { join as join14 } from "node:path";
 
 // src/prompt.ts
 var MAX_ENGINE_PROMPT_BYTES = 512 * 1024;
@@ -26404,12 +27539,12 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
             errorCode: promptTooLarge ? "ENGINE_CONTEXT_LIMIT" : "VALIDATION_REJECTED"
           };
         }
-        const directory = mkdtempSync3(join13(tmpdir2(), "engager-cognition-"));
+        const directory = mkdtempSync3(join14(tmpdir2(), "engager-cognition-"));
         chmodSync8(directory, 448);
         try {
           const startedAt = now();
           const attempt = {
-            id: randomUUID8(),
+            id: randomUUID9(),
             startedAt,
             sessionDay: new Date(startedAt).toISOString().slice(0, 10)
           };
@@ -26602,7 +27737,7 @@ function completionRequest(journal, note) {
   });
 }
 function idempotencyKey(order, stage, body) {
-  const digest = createHash4("sha256").update(JSON.stringify({ orderId: order.id, attempt: order.attempt, stage, body })).digest("hex").slice(0, 24);
+  const digest = createHash5("sha256").update(JSON.stringify({ orderId: order.id, attempt: order.attempt, stage, body })).digest("hex").slice(0, 24);
   return `runner-${stage}-${order.attempt}-${digest}`;
 }
 function verifyContext(order, context) {
@@ -27080,7 +28215,7 @@ function quota(status, reasonCode, resetsAt) {
 }
 var MAINTENANCE_HANDOFF_TIMEOUT_MS = 15e3;
 var REAL_UPGRADE_COMMIT_WAIT_DEPS = {
-  pending: () => readUpgradeTransition() != null,
+  pending: () => readUpgradeTransition() != null || readDisconnectTransition() != null,
   now: Date.now,
   pause: sleep
 };
@@ -27092,14 +28227,14 @@ async function waitForUpgradeTransitionCommit(timeoutMs = MAINTENANCE_HANDOFF_TI
     } catch (error2) {
       return {
         ok: false,
-        reason: `upgrade transition journal became unsafe: ${error2 instanceof Error ? error2.message : String(error2)}`
+        reason: `lifecycle transition journal became unsafe: ${error2 instanceof Error ? error2.message : String(error2)}`
       };
     }
     const remaining = deadline - deps.now();
     if (remaining <= 0) {
       return {
         ok: false,
-        reason: "upgrade transition was not committed before the maintenance handoff timeout"
+        reason: "lifecycle transition was not committed before the maintenance handoff timeout"
       };
     }
     await deps.pause(Math.min(100, remaining));
@@ -27165,11 +28300,11 @@ async function runLoop(config2, options = {}) {
     log(`HALTED: ${reason} \u2014 run \`engager-agent doctor\`, then \`engager-agent resume\``);
     process.exit(service ? 0 : 1);
   };
-  const stopForUpgradeTransition = async (reason) => {
+  const stopForLifecycleTransition = async (reason) => {
     lastCycle = upgradeHandoffStoppedCycle(reason);
     put("stopped", reason);
     await safeTerminalHeartbeat("stopped", reason);
-    log(`upgrade transition fenced runner safely: ${reason}`);
+    log(`lifecycle transition fenced runner safely: ${reason}`);
   };
   const existingHalt = readHalt();
   if (existingHalt) {
@@ -27194,9 +28329,9 @@ async function runLoop(config2, options = {}) {
       process.exit(0);
     }
     if (!maintenanceHandoff) {
-      const transitionReason2 = upgradeTransitionBlockReason();
+      const transitionReason2 = lifecycleTransitionBlockReason();
       if (transitionReason2) {
-        await stopForUpgradeTransition(transitionReason2);
+        await stopForLifecycleTransition(transitionReason2);
         return;
       }
     }
@@ -27224,7 +28359,7 @@ async function runLoop(config2, options = {}) {
         {
           allowWork: !pause && !maintenanceHandoff,
           readinessOnly: maintenanceHandoff,
-          executionFence: () => readUpgradeTransition() == null,
+          executionFence: () => readUpgradeTransition() == null && readDisconnectTransition() == null,
           signal: activeAbort.signal,
           onNegotiated: (negotiatedProtocol, negotiatedQuotaState, engineReady) => {
             const verifiedAt = Date.now();
@@ -27252,6 +28387,17 @@ async function runLoop(config2, options = {}) {
       quotaState = result.quotaState;
       const outcome = result.outcome;
       lastCycle = cycleInfoFromOutcome(outcome);
+      if (!outcome.ok) {
+        logEvent({
+          event: "cycle.fault",
+          level: "warn",
+          runnerId: config2.runnerId,
+          ...isRunnerErrorCode(outcome.errorCode) ? { code: outcome.errorCode } : {},
+          ...outcome.workOrderId ? { workOrderId: outcome.workOrderId } : {},
+          ...outcome.lane ? { lane: outcome.lane } : {},
+          detail: outcome.note
+        });
+      }
       if (outcome.fatal) await halt(outcome.note);
       if (outcome.ok) consecutiveFailures = 0;
       else if (countsTowardHalt(outcome.errorCode)) consecutiveFailures += 1;
@@ -27259,6 +28405,11 @@ async function runLoop(config2, options = {}) {
       log(`${outcome.ok ? "cycle ok" : "cycle idle/failure"}: ${outcome.note}`);
     } catch (error2) {
       const fault = asRunnerFault(error2);
+      logFaultEvent("cycle.fault", fault, {
+        runnerId: config2.runnerId,
+        ...lastCycle?.workOrderId ? { workOrderId: lastCycle.workOrderId } : {},
+        ...lastCycle?.lane ? { lane: lastCycle.lane } : {}
+      });
       lastCycle = {
         at: Date.now(),
         ran: false,
@@ -27286,12 +28437,12 @@ async function runLoop(config2, options = {}) {
         return;
       }
       maintenanceHandoff = false;
-      log("upgrade transition committed \u2014 normal work is now enabled");
+      log("lifecycle transition committed \u2014 normal work is now enabled");
       continue;
     }
-    const transitionReason = upgradeTransitionBlockReason();
+    const transitionReason = lifecycleTransitionBlockReason();
     if (transitionReason) {
-      await stopForUpgradeTransition(transitionReason);
+      await stopForLifecycleTransition(transitionReason);
       return;
     }
     if (stopping) continue;
@@ -27368,6 +28519,9 @@ function upgradeTransitionBlockReason() {
   } catch (error2) {
     return `upgrade transition journal is unsafe: ${error2 instanceof Error ? error2.message : String(error2)}`;
   }
+}
+function lifecycleTransitionBlockReason() {
+  return disconnectTransitionBlockReason() ?? upgradeTransitionBlockReason();
 }
 function activeQuotaBlock(value) {
   if (!value || typeof value.resetsAt !== "number" || value.resetsAt <= Date.now()) return null;
@@ -28015,17 +29169,17 @@ var Y2 = ({ indicator: t = "dots" } = {}) => {
 };
 
 // src/detect.ts
-import { existsSync as existsSync10, readFileSync as readFileSync10 } from "node:fs";
+import { existsSync as existsSync10, readFileSync as readFileSync11 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
-import { join as join15 } from "node:path";
+import { join as join16 } from "node:path";
 
 // src/register.ts
 import { homedir as homedir3 } from "node:os";
-import { join as join14 } from "node:path";
+import { join as join15 } from "node:path";
 var MCP_NAME = "engager";
 function desktopConfigPath() {
   if (process.platform !== "darwin") return null;
-  return join14(homedir3(), "Library", "Application Support", "Claude", "claude_desktop_config.json");
+  return join15(homedir3(), "Library", "Application Support", "Claude", "claude_desktop_config.json");
 }
 
 // src/detect.ts
@@ -28097,14 +29251,14 @@ async function detectEndpoints(existing) {
   try {
     const path = desktopConfigPath();
     if (path && existsSync10(path)) {
-      found.push(desktopEndpoint(JSON.parse(readFileSync10(path, "utf8"))));
+      found.push(desktopEndpoint(JSON.parse(readFileSync11(path, "utf8"))));
     }
   } catch {
   }
   try {
-    const codePath = join15(homedir4(), ".claude.json");
+    const codePath = join16(homedir4(), ".claude.json");
     if (existsSync10(codePath)) {
-      found.push(codeConfigEndpoint(JSON.parse(readFileSync10(codePath, "utf8"))));
+      found.push(codeConfigEndpoint(JSON.parse(readFileSync11(codePath, "utf8"))));
     }
   } catch {
   }
@@ -28431,6 +29585,22 @@ function openBrowser(url2, spawnProcess = spawn2) {
 }
 
 // src/wizard.ts
+function assertSetupConfigSnapshot(existing, deps = {
+  load: loadConfig,
+  loadPartial: loadPartialConfig
+}) {
+  const fencedSnapshot = deps.load() ?? deps.loadPartial() ?? void 0;
+  if (sameConfigSnapshot(existing, fencedSnapshot)) return;
+  throw new RunnerFault(
+    "RUNNER_NOT_CONFIGURED",
+    "runner configuration changed while setup was waiting for the execution fence",
+    {
+      impact: "Setup did not reuse, replace, or request a credential from the stale snapshot.",
+      recovery: "Inspect `engager-agent status`, then restart setup from the current local state.",
+      retryable: true
+    }
+  );
+}
 function settleAcceptedSetupProof(config2, deps = { save: saveConfig, clearJournal }) {
   if (!config2.pendingSetupProofOrganizationId) return config2;
   const settled = withoutPendingSetupProof(config2);
@@ -28536,6 +29706,7 @@ async function runWizard(existing, options = {}) {
   const runnerId = isValidRunnerId(existing?.runnerId) ? existing.runnerId : createRunnerId();
   const setupLock = acquireRunnerLock(runnerId);
   try {
+    assertSetupConfigSnapshot(existing);
     const recovery = prepareSetupJournal();
     if (recovery.state === "blocked") {
       M2.error(
@@ -28866,6 +30037,7 @@ async function selectModel(engine, existing) {
   );
 }
 async function acquireKey(mcpUrl, runnerId, setupProofOrganizationId) {
+  invalidateDisconnectReceiptBeforeCredentialMint();
   const spinner = Y2();
   spinner.start("Requesting a least-privilege runner sign-in code\u2026");
   let start;
@@ -28914,6 +30086,8 @@ var USAGE = `engager-agent \u2014 least-privilege Engager runner
                                         guided engine detection + browser authorization
   engager-agent status [--json]         local runner, protocol, quota, receipt health
   engager-agent doctor [--json]         read-only engine/auth/server/service diagnostics
+  engager-agent disconnect [--json]     owner-approved revocation + crash-safe local teardown
+  engager-agent errors [--json]         stable runner error-code catalog
   engager-agent run                     foreground control loop
   engager-agent run --once              claim at most one server-authored work order
   engager-agent service install         install verified versioned launchd payload (macOS)
@@ -28967,6 +30141,7 @@ ${USAGE}`);
       return;
     case "setup":
     case "config":
+      refuseDuringDisconnect("setup");
       const setupProofOrganizationId = setupProofOrganizationIdFromArgs(argv);
       await runWizard(loadConfig() ?? loadPartialConfig() ?? void 0, {
         reauthorize: has("--reauthorize"),
@@ -28991,6 +30166,63 @@ ${USAGE}`);
       if (!report2.ok) process.exitCode = 1;
       return;
     }
+    case "disconnect": {
+      let lastChallenge = "";
+      const onProgress = (progress) => {
+        const identity = `${progress.phase}:${progress.requestId ?? ""}`;
+        if (identity === lastChallenge) return;
+        lastChallenge = identity;
+        if (has("--json")) {
+          process.stdout.write(`${JSON.stringify({ event: "disconnect_progress", ...progress })}
+`);
+        } else if (progress.verificationUri && progress.userCode) {
+          process.stdout.write(
+            `Approve runner disconnect at:
+  ${progress.verificationUri}
+Code: ${progress.userCode}
+The runner is quiesced and will remain fail-closed. If interrupted, rerun \`engager-agent disconnect\`.
+`
+          );
+        }
+      };
+      try {
+        const result = await disconnectAgentWithProgress(onProgress);
+        if (has("--json")) process.stdout.write(`${JSON.stringify(result)}
+`);
+        else process.stdout.write(`Runner disconnected. Receipt ${result.receiptId}. Local credential and service state were removed.
+`);
+      } catch (error2) {
+        if (!has("--json")) throw error2;
+        const fault = asRunnerFault(error2);
+        const secrets = redactionSecrets();
+        const safe = (value2) => sanitizeSensitiveText(value2, secrets);
+        logFaultEvent("cli.fault", fault);
+        process.stdout.write(`${JSON.stringify({
+          ok: false,
+          error: {
+            code: fault.code,
+            message: safe(fault.message),
+            impact: safe(fault.impact),
+            recovery: safe(fault.recovery),
+            retryable: fault.retryable,
+            reference: safe(fault.reference)
+          }
+        })}
+`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    case "errors": {
+      const entries = RUNNER_ERROR_CODES.map((code) => ({ code, ...RUNNER_ERROR_CATALOG[code] }));
+      if (has("--json")) process.stdout.write(`${JSON.stringify({ schemaVersion: 1, errors: entries }, null, 2)}
+`);
+      else for (const entry of entries) process.stdout.write(`${entry.code}
+  ${entry.summary}
+  Fix: ${entry.defaultRecovery}
+`);
+      return;
+    }
     case "run":
       if (has("--once")) return runOnce();
       return runForeground(has("--service"));
@@ -29000,6 +30232,7 @@ ${USAGE}`);
     case "upgrade": {
       const result = upgradeAgent(AGENT_VERSION);
       log(result.note);
+      logEvent({ event: "upgrade.result", level: result.ok ? "info" : "error", phase: "upgrade", detail: result.note });
       if (!result.ok) process.exitCode = 1;
       return;
     }
@@ -29034,29 +30267,53 @@ ${USAGE}`);
 ${USAGE}`);
   }
 }
-async function runForeground(service) {
-  const config2 = loadConfig();
-  if (!config2) {
+function refuseDuringDisconnect(action) {
+  const reason = disconnectTransitionBlockReason();
+  if (!reason) return;
+  throw new RunnerFault("DISCONNECT_PENDING", `${action} is fenced: ${reason}`, {
+    impact: "No provider detection, authorization, credential replacement, or lifecycle mutation was started.",
+    recovery: "Rerun `engager-agent disconnect` to recover or complete teardown first.",
+    retryable: true
+  });
+}
+var REAL_RUN_FOREGROUND_DEPS = {
+  load: loadConfig,
+  lock: acquireRunnerLock,
+  loop: runLoop,
+  output: log
+};
+async function runForeground(service, deps = REAL_RUN_FOREGROUND_DEPS) {
+  const snapshot = deps.load();
+  if (!snapshot) {
     if (service) {
-      log("RUNNER_NOT_CONFIGURED: run `engager-agent setup` in a terminal");
+      deps.output("RUNNER_NOT_CONFIGURED: run `engager-agent setup` in a terminal");
       return;
     }
     throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
   }
-  if (config2.pendingSetupProofOrganizationId) {
-    const message = "SETUP_PROOF_PENDING: run `engager-agent run --once` to claim or reconcile the exact setup proof before production polling";
-    if (service) {
-      log(message);
-      return;
-    }
-    throw new Error(message);
-  }
   const maintenanceHandoff = service && Boolean(process.env[MAINTENANCE_TOKEN_ENV]);
-  const lock = acquireRunnerLock(config2.runnerId);
+  const lock = deps.lock(snapshot.runnerId);
   const release = () => lock.release();
   process.once("exit", release);
   try {
-    await runLoop(config2, {
+    const config2 = deps.load();
+    if (!config2 || !sameConfigSnapshot(snapshot, config2)) {
+      const message = "RUNNER_NOT_CONFIGURED: configuration changed while execution was waiting for its fence; restart from current state";
+      if (service) {
+        deps.output(message);
+        return;
+      }
+      throw configChangedFault();
+    }
+    if (config2.pendingSetupProofOrganizationId) {
+      const message = "SETUP_PROOF_PENDING: run `engager-agent run --once` to claim or reconcile the exact setup proof before production polling";
+      if (service) {
+        deps.output(message);
+        return;
+      }
+      throw new Error(message);
+    }
+    await deps.loop(config2, {
       service,
       version: AGENT_VERSION,
       maintenanceHandoff
@@ -29079,24 +30336,13 @@ var REAL_RUN_ONCE_DEPS = {
   terminal: controlPoll,
   markHalt: writeHalt,
   sessions: providerSessionsToday,
-  output: log
+  output: log,
+  event: logEvent
 };
 async function runOnce(deps = REAL_RUN_ONCE_DEPS) {
-  const config2 = deps.load();
-  if (!config2) throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
-  const halt = deps.halt();
-  if (halt) throw new Error(`runner is halted (${halt.reason}); run \`engager-agent doctor\`, then \`engager-agent resume\``);
-  const pause = deps.pause();
-  const prior = deps.status();
-  const day = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  let sessionsToday = deps.sessions();
-  let consecutiveFailures = prior?.consecutiveFailures ?? 0;
-  let protocol;
-  let protocolVerifiedAt;
-  let quotaState = prior?.quotaState;
-  let fatal = false;
+  const snapshot = deps.load();
+  if (!snapshot) throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
   let signalReceived = null;
-  let cycle = prior?.lastCycle;
   const controller = new AbortController();
   const onSignal = (signal) => {
     signalReceived = signal;
@@ -29104,10 +30350,24 @@ async function runOnce(deps = REAL_RUN_ONCE_DEPS) {
   };
   const onTerm = () => onSignal("SIGTERM");
   const onInt = () => onSignal("SIGINT");
+  const lock = deps.lock(snapshot.runnerId);
   process.on("SIGTERM", onTerm);
   process.on("SIGINT", onInt);
-  const lock = deps.lock(config2.runnerId);
   try {
+    const config2 = deps.load();
+    if (!config2 || !sameConfigSnapshot(snapshot, config2)) throw configChangedFault();
+    const halt = deps.halt();
+    if (halt) throw new Error(`runner is halted (${halt.reason}); run \`engager-agent doctor\`, then \`engager-agent resume\``);
+    const pause = deps.pause();
+    const prior = deps.status();
+    const day = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    let sessionsToday = deps.sessions();
+    let consecutiveFailures = prior?.consecutiveFailures ?? 0;
+    let protocol;
+    let protocolVerifiedAt;
+    let quotaState = prior?.quotaState;
+    let fatal = false;
+    let cycle = prior?.lastCycle;
     try {
       const result = await deps.cycle(
         config2,
@@ -29129,6 +30389,17 @@ async function runOnce(deps = REAL_RUN_ONCE_DEPS) {
       protocolVerifiedAt = Date.now();
       quotaState = result.quotaState;
       const outcome = result.outcome;
+      if (!outcome.ok) {
+        deps.event({
+          event: "cycle.fault",
+          level: "warn",
+          runnerId: config2.runnerId,
+          ...isRunnerErrorCode(outcome.errorCode) ? { code: outcome.errorCode } : {},
+          ...outcome.workOrderId ? { workOrderId: outcome.workOrderId } : {},
+          ...outcome.lane ? { lane: outcome.lane } : {},
+          detail: outcome.note
+        });
+      }
       if (config2.pendingSetupProofOrganizationId && isAcceptedSetupProof(outcome)) {
         settleAcceptedSetupProof(config2, {
           save: deps.save,
@@ -29141,6 +30412,14 @@ async function runOnce(deps = REAL_RUN_ONCE_DEPS) {
       else if (countsTowardHalt(outcome.errorCode)) consecutiveFailures += 1;
     } catch (error2) {
       const fault = asRunnerFault(error2);
+      deps.event({
+        event: "cycle.fault",
+        level: "error",
+        code: fault.code,
+        reference: fault.reference,
+        runnerId: config2.runnerId,
+        detail: fault.message
+      });
       cycle = {
         at: Date.now(),
         ran: false,
@@ -29150,7 +30429,7 @@ async function runOnce(deps = REAL_RUN_ONCE_DEPS) {
       };
       if (faultCountsTowardHalt(fault)) consecutiveFailures += 1;
       quotaState = quotaStateForFault(fault);
-      deps.output(formatRunnerFault(fault));
+      deps.output(formatRunnerFault(fault, redactionSecrets()));
     }
     sessionsToday = deps.sessions();
     const halted = fatal || consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
@@ -29196,9 +30475,21 @@ async function runOnce(deps = REAL_RUN_ONCE_DEPS) {
 }
 if (isDirectInvocation()) {
   main().catch((error2) => {
-    log(formatRunnerFault(error2));
+    logFaultEvent("cli.fault", error2);
+    log(formatRunnerFault(error2, redactionSecrets()));
     process.exitCode = 1;
   });
+}
+function configChangedFault() {
+  return new RunnerFault(
+    "RUNNER_NOT_CONFIGURED",
+    "the runner configuration changed while execution was waiting for its lock",
+    {
+      impact: "No control poll, claim, or provider process was started with the stale credential snapshot.",
+      recovery: "Inspect `engager-agent status`; rerun setup only if the machine is not disconnected.",
+      retryable: true
+    }
+  );
 }
 function isDirectInvocation() {
   if (!process.argv[1]) return false;
