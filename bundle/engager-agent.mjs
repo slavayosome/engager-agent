@@ -15046,6 +15046,17 @@ var RUNNER_SUPPORTED_VERSION = Object.freeze({
   major: RUNNER_CONTRACT_MAJOR,
   minor: RUNNER_CONTRACT_MINOR
 });
+var RUNNER_SETUP_PROOF_TOOL_NAMES = Object.freeze([
+  "report_runner_status",
+  "claim_runner_work",
+  "renew_runner_lease",
+  "get_runner_work_context",
+  "runner_submit_triage",
+  "complete_runner_work"
+]);
+function isV2RunnerSurface(surface) {
+  return surface === "v2" || surface === "v2-setup-proof";
+}
 var V1TriageSchema = external_exports.object({
   toTriage: external_exports.number().int().nonnegative(),
   topByReach: external_exports.number().int().nonnegative(),
@@ -15086,9 +15097,11 @@ function parseNegotiatedDirective(value) {
   };
 }
 function classifyRunnerSurface(names) {
-  const actual = [...new Set(names)].sort();
+  const actual = [...names].sort();
   const v2 = [...RUNNER_V2_TOOL_NAMES].sort();
   if (sameStrings(actual, v2)) return "v2";
+  const setupProof = [...RUNNER_SETUP_PROOF_TOOL_NAMES].sort();
+  if (sameStrings(actual, setupProof)) return "v2-setup-proof";
   const v1 = [...RUNNER_V1_TOOL_NAMES].sort();
   if (sameStrings(actual, v1)) return "v1-or-bootstrap";
   throw new Error(
@@ -26040,9 +26053,9 @@ var EngagerMcp = class {
     const negotiated = parseNegotiatedDirective(
       await this.callJson("report_runner_status", heartbeat)
     );
-    if (negotiated.protocol === "2.1" && this.surfaceValue !== "v2") {
+    if (negotiated.protocol === "2.1" && !isV2RunnerSurface(this.surfaceValue)) {
       const surface = await this.reconnect();
-      if (surface !== "v2") {
+      if (!isV2RunnerSurface(surface)) {
         throw new RunnerFault(
           "CONTRACT_UPGRADE_REQUIRED",
           "server accepted protocol 2.1 but did not expose the leased runner surface",
@@ -26118,11 +26131,21 @@ var EngagerMcp = class {
     );
   }
   async v2Call(name, input) {
-    if (this.surfaceValue !== "v2") {
+    if (!isV2RunnerSurface(this.surfaceValue)) {
       throw new RunnerFault("CONTRACT_UPGRADE_REQUIRED", `${name} requires the v2.1 runner surface`, {
         impact: "No runner mutation was attempted.",
         recovery: "Negotiate protocol 2.1 and reconnect before claiming work."
       });
+    }
+    if (this.surfaceValue === "v2-setup-proof" && !RUNNER_SETUP_PROOF_TOOL_NAMES.includes(name)) {
+      throw new RunnerFault(
+        "CONTRACT_UPGRADE_REQUIRED",
+        `${name} is outside the purpose-bound setup-proof surface`,
+        {
+          impact: "No production drafting or reply operation was attempted.",
+          recovery: "Finish the exact setup proof first; reconnect only after Engager accepts it."
+        }
+      );
     }
     return this.callJson(name, input);
   }
@@ -26375,7 +26398,7 @@ async function runDoctor(config2, now = Date.now()) {
     checks.push({
       name: "server",
       status: "pass",
-      detail: surface === "v2" ? "authenticated; leased protocol 2.1 surface is active" : "authenticated; legacy/bootstrap surface will negotiate on run"
+      detail: surface === "v2" ? "authenticated; leased protocol 2.1 surface is active" : surface === "v2-setup-proof" ? "authenticated; purpose-bound setup-proof surface is active" : "authenticated; legacy/bootstrap surface will negotiate on run"
     });
   } catch (error2) {
     const fault = asRunnerFault(error2);
@@ -29854,7 +29877,7 @@ async function runWizard(existing, options = {}) {
         try {
           const surface = await mcp.connect();
           check2.stop(
-            surface === "v2" ? "Connected to the leased v2.1 runner surface." : "Connected to the version-negotiation surface."
+            surface === "v2" ? "Connected to the leased v2.1 runner surface." : surface === "v2-setup-proof" ? "Connected to the purpose-bound v2.1 setup-proof surface." : "Connected to the version-negotiation surface."
           );
           connected = true;
           break;

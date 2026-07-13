@@ -166,6 +166,8 @@ export async function runDoctor(
       detail:
         surface === "v2"
           ? "authenticated; leased protocol 2.1 surface is active"
+          : surface === "v2-setup-proof"
+            ? "authenticated; purpose-bound setup-proof surface is active"
           : "authenticated; legacy/bootstrap surface will negotiate on run",
     });
   } catch (error) {

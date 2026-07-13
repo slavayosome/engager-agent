@@ -8,6 +8,7 @@ import {
   type RunnerMcpSession,
   type RunnerMcpSessionFactory,
 } from "./mcp.js";
+import { RUNNER_SETUP_PROOF_TOOL_NAMES } from "./protocol.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +68,75 @@ describe("MCP least-privilege negotiation", () => {
     expect(mcp.surface).toBe("v2");
     expect(bootstrap.close).toHaveBeenCalledOnce();
     expect(leased.connect).toHaveBeenCalledOnce();
+  });
+
+  it("accepts only the exact setup-proof surface and blocks production calls locally", async () => {
+    const setupProof = session(RUNNER_SETUP_PROOF_TOOL_NAMES, (name) => {
+      if (name === "report_runner_status") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                contractVersion: 2,
+                serverSupportedVersion: { major: 2, minor: 1 },
+                directive: "run",
+                reason: "exact setup proof is ready",
+                workOrder: null,
+              }),
+            },
+          ],
+        };
+      }
+      if (name === "claim_runner_work") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                contractVersion: 2,
+                status: "empty",
+                reason: "no eligible setup proof",
+                workOrder: null,
+              }),
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected network call to ${name}`);
+    });
+    const mcp = new EngagerMcp(
+      "https://engager.test/mcp",
+      "runner-secret",
+      "0.9.0",
+      () => setupProof,
+    );
+    expect((await mcp.negotiate(heartbeat)).protocol).toBe("2.1");
+    expect(mcp.surface).toBe("v2-setup-proof");
+    await expect(
+      mcp.claim({
+        contractVersion: 2,
+        runnerId: "runner-test",
+        supportedVersion: { major: 2, minor: 1 },
+        claimPurpose: "setup_proof",
+      }),
+    ).resolves.toMatchObject({ status: "empty", workOrder: null });
+    await expect(
+      mcp.validateBatch({
+        contractVersion: 2,
+        workOrderId: "11111111-1111-4111-8111-111111111111",
+        leaseToken: "lease-token-0123456789abcdef",
+        contextRevision: "ctx-draft-12",
+        lane: "draft",
+        items: [
+          {
+            candidateId: 201,
+            text: "A concrete point with a real question.",
+          },
+        ],
+      }),
+    ).rejects.toThrow(/outside the purpose-bound setup-proof surface/);
+    expect(setupProof.callTool).toHaveBeenCalledTimes(2);
   });
 
   it("keeps a strict untagged v1 directive on the compatibility surface", async () => {

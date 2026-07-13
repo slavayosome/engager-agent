@@ -408,6 +408,8 @@ export async function runWizard(
         check.stop(
           surface === "v2"
             ? "Connected to the leased v2.1 runner surface."
+            : surface === "v2-setup-proof"
+              ? "Connected to the purpose-bound v2.1 setup-proof surface."
             : "Connected to the version-negotiation surface.",
         );
         connected = true;

@@ -13,6 +13,7 @@ import {
   RunnerWireResponseSchema,
 } from "@engager/runner-contract";
 import {
+  RUNNER_SETUP_PROOF_TOOL_NAMES,
   classifyRunnerSurface,
   parseNegotiatedDirective,
 } from "./protocol.js";
@@ -150,9 +151,33 @@ describe("published runner contract consumption", () => {
 });
 
 describe("protocol negotiation", () => {
-  it("accepts only exact v1/bootstrap or v2 surfaces", () => {
+  it("accepts only exact v1/bootstrap, full v2, or setup-proof v2 surfaces", () => {
     expect(classifyRunnerSurface([...RUNNER_V1_COMPATIBILITY.toolNames])).toBe("v1-or-bootstrap");
     expect(classifyRunnerSurface(Object.keys(RUNNER_V2_OPERATION_CONTRACTS))).toBe("v2");
+    expect(classifyRunnerSurface([...RUNNER_SETUP_PROOF_TOOL_NAMES])).toBe("v2-setup-proof");
+    for (const omitted of RUNNER_SETUP_PROOF_TOOL_NAMES) {
+      expect(() =>
+        classifyRunnerSurface(
+          RUNNER_SETUP_PROOF_TOOL_NAMES.filter((name) => name !== omitted),
+        ),
+      ).toThrow(/surface mismatch/);
+    }
+    for (const added of [
+      "runner_validate_batch",
+      "runner_submit_batch",
+      "runner_submit_replies",
+      "list_campaigns",
+    ]) {
+      expect(() =>
+        classifyRunnerSurface([...RUNNER_SETUP_PROOF_TOOL_NAMES, added]),
+      ).toThrow(/surface mismatch/);
+    }
+    expect(() =>
+      classifyRunnerSurface([
+        ...RUNNER_SETUP_PROOF_TOOL_NAMES,
+        RUNNER_SETUP_PROOF_TOOL_NAMES[0],
+      ]),
+    ).toThrow(/surface mismatch/);
     expect(() => classifyRunnerSurface(["report_runner_status", "list_campaigns", "admin"])).toThrow(
       /surface mismatch/,
     );
