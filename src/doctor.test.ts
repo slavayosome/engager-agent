@@ -1,16 +1,22 @@
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RunnerWorkOrderSchema } from "@engager/runner-contract";
 import type { AgentConfig } from "./config.js";
-import { diagnoseRecoveryJournal, runDoctor } from "./doctor.js";
+import { diagnoseRecoveryJournal, diagnoseUpgradeTransition, runDoctor } from "./doctor.js";
 import {
   JOURNAL_EXPIRY_SKEW_MS,
   journalPath,
   startJournal,
 } from "./journal.js";
+import { maintenanceLockPath, runnerLockPath } from "./lock.js";
 import { sessionUsagePath } from "./session-usage.js";
+import {
+  fileSnapshot,
+  upgradeTransitionPath,
+  writeUpgradeTransition,
+} from "./upgrade-transition.js";
 
 const NOW = Date.UTC(2026, 6, 11, 9, 0, 0);
 const config: AgentConfig = {
@@ -93,4 +99,110 @@ describe("doctor recovery diagnostics", () => {
       ]),
     );
   });
+
+  it("reports both unsafe locks without configuration and never emits owner tokens", async () => {
+    mkdirSync(runnerLockPath("global"), { recursive: true, mode: 0o700 });
+    mkdirSync(maintenanceLockPath(), { recursive: true, mode: 0o700 });
+    writeFileSync(join(maintenanceLockPath(), "owner.json"), "not-json secret-lock-token\n", {
+      mode: 0o600,
+    });
+
+    const report = await runDoctor(null, NOW);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "execution-lock", status: "fail" }),
+        expect.objectContaining({ name: "maintenance-lock", status: "fail" }),
+      ]),
+    );
+    expect(JSON.stringify(report)).not.toContain("secret-lock-token");
+  });
+
+  it("reports sanitized valid lock state without capability tokens", async () => {
+    const executionToken = "execution-capability-must-stay-private";
+    const maintenanceToken = "maintenance-capability-must-stay-private";
+    for (const [path, token] of [
+      [runnerLockPath("global"), executionToken],
+      [maintenanceLockPath(), maintenanceToken],
+    ] as const) {
+      mkdirSync(path, { recursive: true, mode: 0o700 });
+      writeFileSync(
+        join(path, "owner.json"),
+        JSON.stringify({
+          pid: 2_147_000_000,
+          token,
+          runnerId: "doctor-lock",
+          startedAt: 1,
+          processIdentity: "exited-process",
+        }),
+        { mode: 0o600 },
+      );
+    }
+    const report = await runDoctor(null, NOW);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "execution-lock", status: "warn" }),
+        expect.objectContaining({ name: "maintenance-lock", status: "warn" }),
+      ]),
+    );
+    const serialized = JSON.stringify(report);
+    expect(serialized).not.toContain(executionToken);
+    expect(serialized).not.toContain(maintenanceToken);
+  });
+
+  it("reports a pending transition phase/version without configuration", async () => {
+    writeUpgradeTransition({
+      schemaVersion: 1,
+      phase: "prepared",
+      createdAt: NOW,
+      prior: {
+        installed: false,
+        loaded: false,
+        disabled: false,
+        current: { target: null, payloadSha256: null },
+        previous: { target: null, payloadSha256: null },
+        plist: fileSnapshot(null),
+      },
+      target: {
+        installed: false,
+        disabled: false,
+        version: "0.9.1",
+        payloadSha256: "a".repeat(64),
+        linkTarget: "versions/0.9.1-aaaaaaaaaaaaaaaa",
+        previous: { target: null, payloadSha256: null },
+        plist: fileSnapshot(null),
+      },
+    });
+
+    const check = diagnoseUpgradeTransition();
+    expect(check).toMatchObject({
+      name: "upgrade-transition",
+      status: "fail",
+      detail: expect.stringContaining("0.9.1 transition remains at phase prepared"),
+    });
+    expect(check.recovery).not.toContain("service status");
+    const report = await runDoctor(null, NOW);
+    expect(report.ok).toBe(false);
+    expect(report.checks).toContainEqual(check);
+  });
+
+  it.each(["corrupt", "symlink"] as const)(
+    "fails closed on a %s transition journal without exposing its contents",
+    async (kind) => {
+      const secret = "transition-secret-must-not-leak";
+      if (kind === "corrupt") {
+        writeFileSync(upgradeTransitionPath(), `not-json ${secret}\n`, { mode: 0o600 });
+      } else {
+        const target = join(process.env.ENGAGER_AGENT_HOME!, "outside-transition");
+        writeFileSync(target, `not-json ${secret}\n`, { mode: 0o600 });
+        symlinkSync(target, upgradeTransitionPath());
+      }
+      const report = await runDoctor(null, NOW);
+      expect(report.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "upgrade-transition", status: "fail" }),
+        ]),
+      );
+      expect(JSON.stringify(report)).not.toContain(secret);
+    },
+  );
 });

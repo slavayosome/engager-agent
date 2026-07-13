@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   configPath,
   engineConfigDirFromEnvironment,
+  finalizeAcknowledgedDeviceConfig,
   loadConfig,
   loadPartialConfig,
   savePartialConfig,
@@ -189,6 +190,11 @@ describe("device flow against a scripted server", () => {
         setupProofOrganizationId: "not-a-uuid",
       }),
     ).rejects.toMatchObject({ code: "DEVICE_AUTH_REJECTED" });
+    await expect(
+      startDeviceFlow(base, "setup-proof-runner", {
+        setupProofOrganizationId: "aaaaaaaa-aaaa-8aaa-8aaa-aaaaaaaaaaaa",
+      }),
+    ).rejects.toMatchObject({ code: "DEVICE_AUTH_REJECTED" });
   });
 
   it("pollForKey claims a key after pending", async () => {
@@ -354,7 +360,7 @@ describe("partial config", () => {
   });
 
   it("fails work closed while a protocol-2 delivery ACK remains durable", () => {
-    savePartialConfig({
+    const pending = {
       configVersion: 2,
       mcpUrl: "https://m/mcp",
       apiKey: "eng_temporary_0123456789",
@@ -362,16 +368,29 @@ describe("partial config", () => {
       runnerId: "pending-runner",
       engine: "claude",
       enginePath: "/opt/homebrew/bin/claude",
+      pendingSetupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
       pendingDeviceAck: {
         deviceCode: "engd_pending_0123456789",
         ackToken: "engda_pending_0123456789",
         deliveryExpiresAt: Date.now() + 60_000,
       },
-    });
+    } as const;
+    savePartialConfig(pending);
     expect(loadConfig()).toBeNull();
     expect(loadPartialConfig()?.pendingDeviceAck).toMatchObject({
       deviceCode: "engd_pending_0123456789",
     });
+    expect(finalizeAcknowledgedDeviceConfig(pending)).toMatchObject({
+      pendingSetupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
+    });
+    expect(loadConfig()).toMatchObject({
+      apiKey: "eng_temporary_0123456789",
+      pendingSetupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
+    });
+    expect(loadPartialConfig()?.pendingDeviceAck).toBeUndefined();
   });
 
   it("refuses to use a group-readable key while preserving non-secret setup identity", () => {

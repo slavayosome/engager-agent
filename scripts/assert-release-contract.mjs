@@ -90,6 +90,20 @@ if (contract.RUNNER_CONTRACT_VERSION !== pin.protocolVersion) {
   );
 }
 
+if (
+  typeof contract.RunnerDoctorHealthSchema?.safeParse !== "function" ||
+  contract.RUNNER_CONTRACT_HEALTH?.current?.version !== pin.protocolVersion ||
+  !contract.RunnerDoctorHealthSchema.safeParse({
+    serverTime: 0,
+    runnerContract: contract.RUNNER_CONTRACT_HEALTH,
+    release: { environment: null, releaseSha: null },
+  }).success
+) {
+  fail(
+    "runner-contract archive is exact but stale: doctor health schema/compatibility metadata is missing or inconsistent",
+  );
+}
+
 // Package versions and archive hashes prove identity, not freshness. Keep the
 // release-required semantic boundaries here so a reviewed-but-obsolete archive
 // cannot satisfy the gate merely because its old hash is still pinned.

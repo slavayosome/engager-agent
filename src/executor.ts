@@ -233,19 +233,32 @@ async function executeJournal(
   engine: AgentEngine,
   initial: ActiveWorkJournal,
   recovering: boolean,
-  options: { signal?: AbortSignal; allowCognition?: boolean; cognitionFault?: RunnerFault },
+  options: {
+    signal?: AbortSignal;
+    allowCognition?: boolean;
+    cognitionFault?: RunnerFault;
+    claimPurpose?: RunnerWorkPurpose;
+  },
   journalStore: NonNullable<ExecutorDeps["journal"]>,
   now: () => number,
   reserveSession: typeof reserveProviderSession,
 ): Promise<ExecutionOutcome> {
   let journal = initial;
   const order = journal.workOrder;
+  const finalizeCompletion = (completion: RunnerCompletionResponse): void => {
+    finalizeCompletionJournal(
+      journalStore.clear,
+      order.purpose,
+      completion,
+      Boolean(config.pendingSetupProofOrganizationId),
+    );
+  };
   const recoveredUnaccounted = journal.cognition?.accounted === false;
   if (journal.completion) {
     try {
       const completion = await mcp.complete(journal.completion);
       verifyCompletion(order, completion);
-      journalStore.clear();
+      finalizeCompletion(completion);
       return {
         ...completionOutcome(order, completion),
         ...(recoveredUnaccounted ? { recoveredEngineAttempt: true } : {}),
@@ -297,7 +310,7 @@ async function executeJournal(
       journal = journalStore.completion(journal, completionInput);
       const completion = await mcp.complete(completionInput);
       verifyCompletion(order, completion, receipt);
-      journalStore.clear();
+      finalizeCompletion(completion);
       return {
         ...completionOutcome(order, completion),
         ...(recoveredUnaccounted ? { recoveredEngineAttempt: true } : {}),
@@ -338,7 +351,7 @@ async function executeJournal(
           journal = journalStore.completion(journal, completionInput);
           const completion = await mcp.complete(completionInput);
           verifyCompletion(order, completion);
-          journalStore.clear();
+          finalizeCompletion(completion);
           return {
             ...completionOutcome(order, completion),
             ok: false,
@@ -382,7 +395,7 @@ async function executeJournal(
             journal = journalStore.completion(journal, completionInput);
             const completion = await mcp.complete(completionInput);
             verifyCompletion(order, completion);
-            journalStore.clear();
+            finalizeCompletion(completion);
             const terminal = completionOutcome(order, completion);
             return {
               ...terminal,
@@ -427,7 +440,7 @@ async function executeJournal(
           journal = journalStore.completion(journal, completionInput);
           const completion = await mcp.complete(completionInput);
           verifyCompletion(order, completion);
-          journalStore.clear();
+          finalizeCompletion(completion);
           return {
             ...completionOutcome(order, completion),
             ok: false,
@@ -465,7 +478,7 @@ async function executeJournal(
     journal = journalStore.completion(journal, completionInput);
     const completion = await mcp.complete(completionInput);
     verifyCompletion(order, completion, receipt ?? undefined);
-    journalStore.clear();
+    finalizeCompletion(completion);
     const outcome = completionOutcome(order, completion);
     return {
       ...outcome,
@@ -481,6 +494,24 @@ async function executeJournal(
   } finally {
     supervisor.stop();
   }
+}
+
+/** A purpose-bound setup must durably clear its local pending marker before
+ * discarding the idempotent completion replay. Ordinary setup has no marker to
+ * settle and clears immediately, so service installation cannot be blocked by
+ * an already-accepted proof. */
+export function finalizeCompletionJournal(
+  clear: () => void,
+  claimPurpose?: RunnerWorkPurpose,
+  completion?: RunnerCompletionResponse,
+  retainAcceptedSetupProof: boolean = false,
+): void {
+  const acceptedSetupProof =
+    claimPurpose === "setup_proof" &&
+    completion?.status === "completed" &&
+    completion.result.failed === 0 &&
+    completion.result.unfinished === 0;
+  if (!acceptedSetupProof || !retainAcceptedSetupProof) clear();
 }
 
 function scopeProposal(

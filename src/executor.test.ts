@@ -5,6 +5,7 @@ import {
   RunnerCompletionResponseSchema,
   RunnerReceiptSchema,
   RunnerSubmitBatchInputSchema,
+  RunnerSubmitTriageInputSchema,
   RunnerWorkOrderSchema,
   summarizeReceiptEvents,
   type RunnerCompletionResponse,
@@ -16,7 +17,11 @@ import {
 import type { AgentConfig } from "./config.js";
 import type { AgentEngine, EngineRunRequest, EngineRunResult } from "./engine.js";
 import { RunnerFault } from "./errors.js";
-import { executeOneClaim, type ExecutorDeps } from "./executor.js";
+import {
+  executeOneClaim,
+  finalizeCompletionJournal,
+  type ExecutorDeps,
+} from "./executor.js";
 import { journalBinding, type ActiveWorkJournal, type JournalSubmission } from "./journal.js";
 import type { EngagerMcp } from "./mcp.js";
 import { workOrderItemIds, type AgentProposal } from "./protocol.js";
@@ -414,6 +419,35 @@ function fakeMcp(
 }
 
 describe("leased executor", () => {
+  it("retains only a purpose-bound accepted setup proof that still has a marker", () => {
+    const clear = vi.fn();
+    const accepted: RunnerCompletionResponse = {
+      contractVersion: 2,
+      workOrderId: IDS.triage,
+      lane: "triage",
+      status: "completed",
+      completedAt: NOW,
+      result: {
+        accepted: 1,
+        rejected: 0,
+        alreadyExists: 0,
+        failed: 0,
+        unfinished: 0,
+      },
+    };
+    finalizeCompletionJournal(clear, "setup_proof", accepted, true);
+    expect(clear).not.toHaveBeenCalled();
+
+    finalizeCompletionJournal(clear, "setup_proof", accepted, false);
+    finalizeCompletionJournal(clear, "setup_proof", {
+      ...accepted,
+      status: "partial",
+      result: { ...accepted.result, accepted: 0, unfinished: 1 },
+    }, true);
+    finalizeCompletionJournal(clear, undefined, accepted);
+    expect(clear).toHaveBeenCalledTimes(3);
+  });
+
   for (const lane of ["triage", "draft", "discover_draft", "reply"] as const) {
     it(`executes ${lane} using frozen context, exact receipt, and completion`, async () => {
       const work = order(lane);
@@ -798,7 +832,7 @@ describe("leased executor", () => {
     expect(base.calls).toEqual(["claim"]);
   });
 
-  it("claims and completes only setup-proof work when setup requests proof intent", async () => {
+  it("retains recovered setup-proof completion replay until the protected marker settles", async () => {
     const proof = RunnerWorkOrderSchema.parse({
       ...order("triage"),
       purpose: "setup_proof",
@@ -814,8 +848,13 @@ describe("leased executor", () => {
         return base.claim();
       },
     };
+    const protectedConfig = {
+      ...config,
+      pendingSetupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
+    };
     const outcome = await executeOneClaim(
-      config,
+      protectedConfig,
       mcp as unknown as EngagerMcp,
       fakeEngine(proposal("triage")),
       { claimPurpose: "setup_proof" },
@@ -823,6 +862,100 @@ describe("leased executor", () => {
     );
     expect(claimPurpose).toBe("setup_proof");
     expect(outcome).toMatchObject({ ok: true, workPurpose: "setup_proof" });
+    expect(journal.get()?.completion).toBeDefined();
+
+    const recovered = await executeOneClaim(
+      protectedConfig,
+      mcp as unknown as EngagerMcp,
+      fakeEngine(proposal("triage")),
+      {},
+      executionDeps(journal),
+    );
+    expect(recovered).toMatchObject({ ok: true, workPurpose: "setup_proof" });
+    expect(journal.get()?.completion).toBeDefined();
+
+    const settled = await executeOneClaim(
+      config,
+      mcp as unknown as EngagerMcp,
+      fakeEngine(proposal("triage")),
+      {},
+      executionDeps(journal),
+    );
+    expect(settled).toMatchObject({ ok: true, workPurpose: "setup_proof" });
+    expect(journal.get()).toBeNull();
+  });
+
+  it("clears an accepted ordinary setup proof immediately because no marker needs settlement", async () => {
+    const proof = RunnerWorkOrderSchema.parse({
+      ...order("triage"),
+      purpose: "setup_proof",
+    });
+    const journal = memoryJournal();
+    const mcp = fakeMcp(proof);
+    mcp.setJournalProbe(journal.get);
+
+    const outcome = await executeOneClaim(
+      config,
+      mcp as unknown as EngagerMcp,
+      fakeEngine(proposal("triage")),
+      { claimPurpose: "setup_proof" },
+      executionDeps(journal),
+    );
+    expect(outcome).toMatchObject({ ok: true, workPurpose: "setup_proof" });
+    expect(journal.get()).toBeNull();
+  });
+
+  it("retains a protected proof replay recovered from a persisted submission", async () => {
+    const proof = RunnerWorkOrderSchema.parse({
+      ...order("triage"),
+      purpose: "setup_proof",
+    });
+    const protectedConfig: AgentConfig = {
+      ...config,
+      pendingSetupProofOrganizationId:
+        "11111111-1111-4111-8111-111111111111",
+    };
+    const input = RunnerSubmitTriageInputSchema.parse({
+      contractVersion: 2,
+      workOrderId: proof.id,
+      leaseToken: "lease-token-0123456789abcdef",
+      idempotencyKey: "persisted-setup-proof-submit",
+      contextRevision: proof.contextRevision,
+      lane: "triage",
+      items: proposal("triage").items,
+    });
+    const journal = memoryJournal({
+      version: 1,
+      runnerId: protectedConfig.runnerId,
+      ...journalBinding(protectedConfig),
+      savedAt: NOW,
+      leaseToken: "lease-token-0123456789abcdef",
+      workOrder: proof,
+      submission: { tool: "runner_submit_triage", input },
+    });
+    const mcp = fakeMcp(proof);
+    mcp.setJournalProbe(journal.get);
+
+    const recovered = await executeOneClaim(
+      protectedConfig,
+      mcp as unknown as EngagerMcp,
+      fakeEngine(proposal("triage"), () => {
+        throw new Error("persisted setup proof must not rerun cognition");
+      }),
+      {},
+      executionDeps(journal),
+    );
+    expect(recovered).toMatchObject({ ok: true, workPurpose: "setup_proof" });
+    expect(journal.get()?.completion).toBeDefined();
+
+    await executeOneClaim(
+      config,
+      mcp as unknown as EngagerMcp,
+      fakeEngine(proposal("triage")),
+      {},
+      executionDeps(journal),
+    );
+    expect(journal.get()).toBeNull();
   });
 
   it("rejects a production order substituted for an explicit setup proof", async () => {

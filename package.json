@@ -37,10 +37,10 @@
     "access": "public"
   },
   "engagerRunnerContract": {
-    "packageVersion": "1.0.1",
+    "packageVersion": "1.1.0",
     "protocolVersion": "2.1",
-    "vendoredArchive": "vendor/engager-runner-contract-1.0.1.tgz",
-    "sha256": "64ea1ebd68941a8f62977544d5d04d103fce1187fcf259c8e7cf17c96199fec8"
+    "vendoredArchive": "vendor/engager-runner-contract-1.1.0.tgz",
+    "sha256": "07ec2dfa97ab6234b3acb9544ad3ecaa886bee9e72c63007ec609d1460c62344"
   },
   "scripts": {
     "build": "rm -rf dist bundle && tsc -p tsconfig.build.json && node scripts/build-bundle.mjs",
@@ -58,7 +58,7 @@
   },
   "devDependencies": {
     "@clack/prompts": "^0.11.0",
-    "@engager/runner-contract": "file:vendor/engager-runner-contract-1.0.1.tgz",
+    "@engager/runner-contract": "file:vendor/engager-runner-contract-1.1.0.tgz",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^22.10.7",
     "esbuild": "^0.25.0",

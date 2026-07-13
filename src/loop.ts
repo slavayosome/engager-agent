@@ -10,6 +10,7 @@ import { readJournal } from "./journal.js";
 import { clearHalt, readHalt, readPause, writeHalt } from "./markers.js";
 import { readStatus, writeStatus, type CycleInfo, type RunnerState } from "./status.js";
 import { providerSessionsToday } from "./session-usage.js";
+import { readUpgradeTransition } from "./upgrade-transition.js";
 
 export const MAX_CONSECUTIVE_FAILURES = 3;
 const CONTROL_POLL_MS = 5 * 60_000;
@@ -42,6 +43,12 @@ export async function runControlCycle(
   state: HeartbeatState,
   options: {
     allowWork?: boolean;
+    /** Restricts a freshly bootstrapped upgrade target to control negotiation
+     * and readiness publication until the upgrader commits its transition. */
+    readinessOnly?: boolean;
+    /** Rechecked immediately before and after a remote claim so a transition
+     * created during negotiation cannot start cognition. */
+    executionFence?: () => boolean;
     signal?: AbortSignal;
     claimPurpose?: RunnerWorkPurpose;
     /** Runs synchronously after protocol/surface negotiation and before any
@@ -112,6 +119,35 @@ export async function runControlCycle(
         engine != null && isEngineReady(detection),
       );
     }
+    if (options.readinessOnly) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: upgradeBlocked
+          ? {
+              ran: false,
+              ok: false,
+              note: directive.reason,
+              errorCode: "CONTRACT_UPGRADE_REQUIRED",
+            }
+          : {
+              ran: false,
+              ok: true,
+              note: "upgrade handoff readiness verified; no work was claimed",
+            },
+      };
+    }
+    if (options.executionFence && !options.executionFence()) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: {
+          ran: false,
+          ok: true,
+          note: "upgrade transition fenced execution; no work was claimed",
+        },
+      };
+    }
     const recoveryPending = deps.hasJournal();
     if (recoveryPending) {
       const canUseEngine =
@@ -156,7 +192,10 @@ export async function runControlCycle(
           signal: options.signal,
           allowCognition: canUseEngine,
           cognitionFault,
-          canClaim: () => options.allowWork !== false && readPause() == null,
+          canClaim: () =>
+            options.allowWork !== false &&
+            readPause() == null &&
+            (options.executionFence?.() ?? true),
           ...(options.claimPurpose ? { claimPurpose: options.claimPurpose } : {}),
         }),
       };
@@ -236,7 +275,10 @@ export async function runControlCycle(
         quotaState,
         outcome: await deps.execute(config, mcp, engine, {
           signal: options.signal,
-          canClaim: () => options.allowWork !== false && readPause() == null,
+          canClaim: () =>
+            options.allowWork !== false &&
+            readPause() == null &&
+            (options.executionFence?.() ?? true),
           ...(options.claimPurpose ? { claimPurpose: options.claimPurpose } : {}),
         }),
       };
@@ -284,9 +326,54 @@ function quota(status: string, reasonCode: string, resetsAt?: number): Record<st
   };
 }
 
-export type LoopOptions = { service?: boolean; version?: string };
+export const MAINTENANCE_HANDOFF_TIMEOUT_MS = 15_000;
 
-export async function runLoop(config: AgentConfig, options: LoopOptions = {}): Promise<never> {
+export type UpgradeCommitWaitDeps = {
+  pending: () => boolean;
+  now: () => number;
+  pause: (milliseconds: number) => Promise<void>;
+};
+
+const REAL_UPGRADE_COMMIT_WAIT_DEPS: UpgradeCommitWaitDeps = {
+  pending: () => readUpgradeTransition() != null,
+  now: Date.now,
+  pause: sleep,
+};
+
+export async function waitForUpgradeTransitionCommit(
+  timeoutMs = MAINTENANCE_HANDOFF_TIMEOUT_MS,
+  deps: UpgradeCommitWaitDeps = REAL_UPGRADE_COMMIT_WAIT_DEPS,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const deadline = deps.now() + timeoutMs;
+  for (;;) {
+    try {
+      if (!deps.pending()) return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `upgrade transition journal became unsafe: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    const remaining = deadline - deps.now();
+    if (remaining <= 0) {
+      return {
+        ok: false,
+        reason: "upgrade transition was not committed before the maintenance handoff timeout",
+      };
+    }
+    await deps.pause(Math.min(100, remaining));
+  }
+}
+
+export type LoopOptions = {
+  service?: boolean;
+  version?: string;
+  maintenanceHandoff?: boolean;
+  handoffTimeoutMs?: number;
+  handoffWaitDeps?: UpgradeCommitWaitDeps;
+};
+
+export async function runLoop(config: AgentConfig, options: LoopOptions = {}): Promise<void> {
   const service = options.service ?? false;
   const version = options.version ?? "0";
   const startedAt = Date.now();
@@ -303,6 +390,7 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
   let quotaState: Record<string, unknown> | undefined = prior?.quotaState;
   let stopping: string | null = null;
   let activeAbort: AbortController | null = null;
+  let maintenanceHandoff = options.maintenanceHandoff === true;
 
   const put = (state: RunnerState, reason?: string, nextPollAt?: number): boolean =>
     writeStatus({
@@ -327,11 +415,15 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
       ...(nextPollAt != null ? { nextPollAt } : {}),
       ...(quotaState ? { quotaState } : {}),
     });
-  const safeTerminalHeartbeat = async (state: RunnerState): Promise<void> => {
+  const safeTerminalHeartbeat = async (
+    state: RunnerState,
+    reason?: string,
+  ): Promise<void> => {
+    const terminalCycle = reason ? upgradeHandoffStoppedCycle(reason) : lastCycle;
     try {
       await controlPoll(config, version, {
         state,
-        ...(lastCycle ? { lastCycle } : {}),
+        ...(terminalCycle ? { lastCycle: terminalCycle } : {}),
         consecutiveFailures,
         sessionsToday,
         quotaState,
@@ -346,6 +438,12 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
     await safeTerminalHeartbeat("halted");
     log(`HALTED: ${reason} — run \`engager-agent doctor\`, then \`engager-agent resume\``);
     process.exit(service ? 0 : 1);
+  };
+  const stopForUpgradeTransition = async (reason: string): Promise<void> => {
+    lastCycle = upgradeHandoffStoppedCycle(reason);
+    put("stopped", reason);
+    await safeTerminalHeartbeat("stopped", reason);
+    log(`upgrade transition fenced runner safely: ${reason}`);
   };
 
   const existingHalt = readHalt();
@@ -372,6 +470,13 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
       log(`received ${stopping} — clean shutdown`);
       process.exit(0);
     }
+    if (!maintenanceHandoff) {
+      const transitionReason = upgradeTransitionBlockReason();
+      if (transitionReason) {
+        await stopForUpgradeTransition(transitionReason);
+        return;
+      }
+    }
     if (today() !== sessionDay) {
       sessionDay = today();
       sessionsToday = providerSessionsToday();
@@ -394,7 +499,9 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
           quotaState,
         },
         {
-          allowWork: !pause,
+          allowWork: !pause && !maintenanceHandoff,
+          readinessOnly: maintenanceHandoff,
+          executionFence: () => readUpgradeTransition() == null,
           signal: activeAbort.signal,
           onNegotiated: (
             negotiatedProtocol,
@@ -448,6 +555,27 @@ export async function runLoop(config: AgentConfig, options: LoopOptions = {}): P
     } finally {
       activeAbort = null;
       sessionsToday = providerSessionsToday();
+    }
+    if (maintenanceHandoff) {
+      const commit = await waitForUpgradeTransitionCommit(
+        options.handoffTimeoutMs,
+        options.handoffWaitDeps,
+      );
+      if (!commit.ok) {
+        lastCycle = upgradeHandoffStoppedCycle(commit.reason);
+        put("stopped", commit.reason);
+        await safeTerminalHeartbeat("stopped", commit.reason);
+        log(`upgrade handoff stopped safely: ${commit.reason}`);
+        return;
+      }
+      maintenanceHandoff = false;
+      log("upgrade transition committed — normal work is now enabled");
+      continue;
+    }
+    const transitionReason = upgradeTransitionBlockReason();
+    if (transitionReason) {
+      await stopForUpgradeTransition(transitionReason);
+      return;
     }
     if (stopping) continue;
     if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
@@ -526,6 +654,30 @@ export function cycleInfoFromOutcome(outcome: ExecutionOutcome, at = Date.now())
         }
       : {}),
   };
+}
+
+export function upgradeHandoffStoppedCycle(
+  reason: string,
+  at = Date.now(),
+): CycleInfo {
+  return {
+    at,
+    ran: false,
+    ok: false,
+    note: sanitizeTerminalText(reason).slice(0, 400),
+    errorCode: "INTERNAL_ERROR",
+  };
+}
+
+export function upgradeTransitionBlockReason(): string | null {
+  try {
+    const transition = readUpgradeTransition();
+    return transition
+      ? `upgrade transition ${transition.target.version} remains pending at ${transition.phase}`
+      : null;
+  } catch (error) {
+    return `upgrade transition journal is unsafe: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 function activeQuotaBlock(value: Record<string, unknown> | undefined): Record<string, unknown> | null {

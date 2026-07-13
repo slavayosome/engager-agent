@@ -29,6 +29,10 @@ export type AgentConfig = {
   dailySessionCap: number;
   /** Model process deadline; leases are renewed while this runs. */
   sessionTimeoutMinutes: number;
+  /** Local setup intent only. While present, this credential may claim only
+   * setup-proof work for the exact organization. It is removed only after an
+   * accepted proof receipt; it never grants or broadens server authority. */
+  pendingSetupProofOrganizationId?: string;
   /** Sealed 0.8.x bridge only; never consulted by v2.1. */
   legacy?: {
     campaignId: number;
@@ -42,7 +46,7 @@ export type PendingDeviceAck = {
   deliveryExpiresAt: number;
 };
 
-type StoredConfig = Partial<AgentConfig> & {
+export type StoredConfig = Partial<AgentConfig> & {
   /** v0.8.x fields accepted only for one-way migration. */
   cli?: "claude";
   campaignId?: number;
@@ -61,6 +65,13 @@ export const CONFIG_DEFAULTS = {
 
 export function isValidRunnerId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{3,200}$/.test(value);
+}
+
+export function isValidSetupProofOrganizationId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  );
 }
 
 export function agentHome(): string {
@@ -86,6 +97,12 @@ function normalizeConfig(raw: StoredConfig): AgentConfig | null {
   if (engine !== "claude" && engine !== "codex") return null;
   if (!isSafeExecutablePath(raw.enginePath)) return null;
   if (raw.engineConfigDir !== undefined && !isSafeEngineConfigDir(raw.engineConfigDir)) {
+    return null;
+  }
+  if (
+    raw.pendingSetupProofOrganizationId !== undefined &&
+    !isValidSetupProofOrganizationId(raw.pendingSetupProofOrganizationId)
+  ) {
     return null;
   }
   const legacy = raw.legacy ??
@@ -117,6 +134,9 @@ function normalizeConfig(raw: StoredConfig): AgentConfig | null {
       1,
       60,
     ),
+    ...(raw.pendingSetupProofOrganizationId
+      ? { pendingSetupProofOrganizationId: raw.pendingSetupProofOrganizationId.toLowerCase() }
+      : {}),
     ...(legacy ? { legacy } : {}),
   };
 }
@@ -172,6 +192,24 @@ export function configFileMode(): number | null {
 
 export function savePartialConfig(partial: StoredConfig): void {
   writeConfig(partial);
+}
+
+/** Complete protocol-2 delivery only when the remaining configuration is
+ * valid. Keeping the pending ACK record on validation failure makes replay
+ * possible and avoids losing the only durable delivery authority. */
+export function finalizeAcknowledgedDeviceConfig(
+  stored: StoredConfig,
+): AgentConfig | null {
+  const { pendingDeviceAck: _pending, ...candidate } = stored;
+  const normalized = normalizeConfig(candidate);
+  if (!normalized) return null;
+  writeConfig(normalized);
+  return normalized;
+}
+
+export function withoutPendingSetupProof(config: AgentConfig): AgentConfig {
+  const { pendingSetupProofOrganizationId: _pending, ...settled } = config;
+  return settled;
 }
 
 export function createRunnerId(): string {

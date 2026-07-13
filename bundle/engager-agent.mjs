@@ -406,11 +406,11 @@ var require_codegen = __commonJS({
         const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
         return `${varKind} ${this.name}${rhs};` + _n;
       }
-      optimizeNames(names, constants4) {
+      optimizeNames(names, constants5) {
         if (!names[this.name.str])
           return;
         if (this.rhs)
-          this.rhs = optimizeExpr(this.rhs, names, constants4);
+          this.rhs = optimizeExpr(this.rhs, names, constants5);
         return this;
       }
       get names() {
@@ -427,10 +427,10 @@ var require_codegen = __commonJS({
       render({ _n }) {
         return `${this.lhs} = ${this.rhs};` + _n;
       }
-      optimizeNames(names, constants4) {
+      optimizeNames(names, constants5) {
         if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
           return;
-        this.rhs = optimizeExpr(this.rhs, names, constants4);
+        this.rhs = optimizeExpr(this.rhs, names, constants5);
         return this;
       }
       get names() {
@@ -491,8 +491,8 @@ var require_codegen = __commonJS({
       optimizeNodes() {
         return `${this.code}` ? this : void 0;
       }
-      optimizeNames(names, constants4) {
-        this.code = optimizeExpr(this.code, names, constants4);
+      optimizeNames(names, constants5) {
+        this.code = optimizeExpr(this.code, names, constants5);
         return this;
       }
       get names() {
@@ -521,12 +521,12 @@ var require_codegen = __commonJS({
         }
         return nodes.length > 0 ? this : void 0;
       }
-      optimizeNames(names, constants4) {
+      optimizeNames(names, constants5) {
         const { nodes } = this;
         let i = nodes.length;
         while (i--) {
           const n = nodes[i];
-          if (n.optimizeNames(names, constants4))
+          if (n.optimizeNames(names, constants5))
             continue;
           subtractNames(names, n.names);
           nodes.splice(i, 1);
@@ -579,12 +579,12 @@ var require_codegen = __commonJS({
           return void 0;
         return this;
       }
-      optimizeNames(names, constants4) {
+      optimizeNames(names, constants5) {
         var _a;
-        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants4);
-        if (!(super.optimizeNames(names, constants4) || this.else))
+        this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants5);
+        if (!(super.optimizeNames(names, constants5) || this.else))
           return;
-        this.condition = optimizeExpr(this.condition, names, constants4);
+        this.condition = optimizeExpr(this.condition, names, constants5);
         return this;
       }
       get names() {
@@ -607,10 +607,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.iteration})` + super.render(opts);
       }
-      optimizeNames(names, constants4) {
-        if (!super.optimizeNames(names, constants4))
+      optimizeNames(names, constants5) {
+        if (!super.optimizeNames(names, constants5))
           return;
-        this.iteration = optimizeExpr(this.iteration, names, constants4);
+        this.iteration = optimizeExpr(this.iteration, names, constants5);
         return this;
       }
       get names() {
@@ -646,10 +646,10 @@ var require_codegen = __commonJS({
       render(opts) {
         return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
       }
-      optimizeNames(names, constants4) {
-        if (!super.optimizeNames(names, constants4))
+      optimizeNames(names, constants5) {
+        if (!super.optimizeNames(names, constants5))
           return;
-        this.iterable = optimizeExpr(this.iterable, names, constants4);
+        this.iterable = optimizeExpr(this.iterable, names, constants5);
         return this;
       }
       get names() {
@@ -691,11 +691,11 @@ var require_codegen = __commonJS({
         (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNodes();
         return this;
       }
-      optimizeNames(names, constants4) {
+      optimizeNames(names, constants5) {
         var _a, _b;
-        super.optimizeNames(names, constants4);
-        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants4);
-        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants4);
+        super.optimizeNames(names, constants5);
+        (_a = this.catch) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants5);
+        (_b = this.finally) === null || _b === void 0 ? void 0 : _b.optimizeNames(names, constants5);
         return this;
       }
       get names() {
@@ -996,7 +996,7 @@ var require_codegen = __commonJS({
     function addExprNames(names, from) {
       return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
     }
-    function optimizeExpr(expr, names, constants4) {
+    function optimizeExpr(expr, names, constants5) {
       if (expr instanceof code_1.Name)
         return replaceName(expr);
       if (!canOptimize(expr))
@@ -1011,14 +1011,14 @@ var require_codegen = __commonJS({
         return items;
       }, []));
       function replaceName(n) {
-        const c = constants4[n.str];
+        const c = constants5[n.str];
         if (c === void 0 || names[n.str] !== 1)
           return n;
         delete names[n.str];
         return c;
       }
       function canOptimize(e2) {
-        return e2 instanceof code_1._Code && e2._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants4[c.str] !== void 0);
+        return e2 instanceof code_1._Code && e2._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants5[c.str] !== void 0);
       }
     }
     function subtractNames(names, from) {
@@ -7018,8 +7018,8 @@ import { realpathSync as realpathSync3 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/commands.ts
-import { existsSync as existsSync6, readFileSync as readFileSync6, readdirSync } from "node:fs";
-import { join as join7 } from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync8, readdirSync as readdirSync2 } from "node:fs";
+import { join as join9 } from "node:path";
 
 // src/config.ts
 import { randomBytes } from "node:crypto";
@@ -7041,12 +7041,20 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname } from "node:path";
-function syncDirectory(directory) {
+function syncDirectoryDurably(directory) {
   const directoryDescriptor = openSync(directory, constants.O_RDONLY);
   try {
     fsyncSync(directoryDescriptor);
   } finally {
     closeSync(directoryDescriptor);
+  }
+}
+function syncFileDurably(path) {
+  const descriptor = openSync(path, constants.O_RDONLY);
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
   }
 }
 function writePrivateFileDurably(path, contents) {
@@ -7069,7 +7077,7 @@ function writePrivateFileDurably(path, contents) {
     renameSync(temporary, path);
     renamed = true;
     chmodSync(path, 384);
-    syncDirectory(directory);
+    syncDirectoryDurably(directory);
   } finally {
     if (fileDescriptor != null) closeSync(fileDescriptor);
     if (!renamed) rmSync(temporary, { force: true });
@@ -7083,8 +7091,28 @@ function renamePathDurably(source, destination) {
   const sourceDirectory = dirname(source);
   const destinationDirectory = dirname(destination);
   renameSync(source, destination);
-  syncDirectory(sourceDirectory);
-  if (destinationDirectory !== sourceDirectory) syncDirectory(destinationDirectory);
+  syncDirectoryDurably(sourceDirectory);
+  if (destinationDirectory !== sourceDirectory) syncDirectoryDurably(destinationDirectory);
+}
+function removePathDurably(path) {
+  const directory = dirname(path);
+  rmSync(path, { force: true });
+  syncDirectoryDurably(directory);
+}
+function commitVerifiedFileDurably(source, destination, mode = 384) {
+  const descriptor = openSync(source, constants.O_RDONLY);
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  const sourceDirectory = dirname(source);
+  const destinationDirectory = dirname(destination);
+  renameSync(source, destination);
+  chmodSync(destination, mode);
+  syncFileDurably(destination);
+  syncDirectoryDurably(destinationDirectory);
+  if (sourceDirectory !== destinationDirectory) syncDirectoryDurably(sourceDirectory);
 }
 
 // src/config.ts
@@ -7097,6 +7125,9 @@ var CONFIG_DEFAULTS = {
 };
 function isValidRunnerId(value) {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{3,200}$/.test(value);
+}
+function isValidSetupProofOrganizationId(value) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 function agentHome() {
   return process.env.ENGAGER_AGENT_HOME ?? join(homedir(), ".engager");
@@ -7112,6 +7143,9 @@ function normalizeConfig(raw) {
   if (engine !== "claude" && engine !== "codex") return null;
   if (!isSafeExecutablePath(raw.enginePath)) return null;
   if (raw.engineConfigDir !== void 0 && !isSafeEngineConfigDir(raw.engineConfigDir)) {
+    return null;
+  }
+  if (raw.pendingSetupProofOrganizationId !== void 0 && !isValidSetupProofOrganizationId(raw.pendingSetupProofOrganizationId)) {
     return null;
   }
   const legacy = raw.legacy ?? (Number.isSafeInteger(raw.campaignId) && Number(raw.campaignId) > 0 ? {
@@ -7137,6 +7171,7 @@ function normalizeConfig(raw) {
       1,
       60
     ),
+    ...raw.pendingSetupProofOrganizationId ? { pendingSetupProofOrganizationId: raw.pendingSetupProofOrganizationId.toLowerCase() } : {},
     ...legacy ? { legacy } : {}
   };
 }
@@ -7180,6 +7215,17 @@ function configFileMode() {
 }
 function savePartialConfig(partial2) {
   writeConfig(partial2);
+}
+function finalizeAcknowledgedDeviceConfig(stored) {
+  const { pendingDeviceAck: _pending, ...candidate } = stored;
+  const normalized = normalizeConfig(candidate);
+  if (!normalized) return null;
+  writeConfig(normalized);
+  return normalized;
+}
+function withoutPendingSetupProof(config2) {
+  const { pendingSetupProofOrganizationId: _pending, ...settled } = config2;
+  return settled;
 }
 function createRunnerId() {
   const host = (hostname().split(".")[0] || "runner").replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 180);
@@ -7340,14 +7386,15 @@ import { randomUUID as randomUUID3 } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync as chmodSync4,
-  existsSync as existsSync3,
+  existsSync as existsSync4,
+  lstatSync as lstatSync3,
   mkdirSync as mkdirSync4,
-  readFileSync as readFileSync3,
+  readFileSync as readFileSync4,
   renameSync as renameSync2,
   rmSync as rmSync2,
   writeFileSync as writeFileSync2
 } from "node:fs";
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 
 // src/status.ts
 import { chmodSync as chmodSync3, existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync2 } from "node:fs";
@@ -7395,922 +7442,18 @@ function pidAlive(pid) {
   }
 }
 
-// src/lock.ts
-var REAL_IDENTITY_DEPS = {
-  identity: processIdentity,
-  alive: pidAlive
-};
-var TRUSTED_PROCESS_IDENTITY_EXECUTABLES = ["/bin/ps", "/usr/bin/ps"];
-function locksRoot() {
-  return join4(agentHome(), "locks");
-}
-function runnerLockPath(runnerId) {
-  void runnerId;
-  return join4(locksRoot(), "agent.lock");
-}
-function acquireRunnerLock(runnerId, deps = REAL_IDENTITY_DEPS) {
-  mkdirSync4(locksRoot(), { recursive: true, mode: 448 });
-  chmodSync4(locksRoot(), 448);
-  const path = runnerLockPath(runnerId);
-  const identity = deps.identity(process.pid);
-  if (!identity) throw processIdentityFault("current runner process identity could not be established");
-  const owner = {
-    pid: process.pid,
-    token: randomUUID3(),
-    runnerId,
-    startedAt: Date.now(),
-    processIdentity: identity
-  };
-  if (!tryCreate(path, owner)) {
-    const current = readOwner(path);
-    refuseLiveOrUnverifiableOwner(current, deps);
-    recoverStale(path, runnerId, identity, deps);
-    if (!tryCreate(path, owner)) {
-      const winner = readOwner(path);
-      throw alreadyActive(winner ?? { ...owner, pid: 0 });
-    }
-  }
-  let released = false;
-  return {
-    path,
-    owner,
-    release: () => {
-      if (released) return;
-      released = true;
-      const current = readOwner(path);
-      if (current?.token === owner.token) rmSync2(path, { recursive: true, force: true });
-    }
-  };
-}
-function tryCreate(path, owner) {
-  const staging = `${path}.candidate-${process.pid}-${owner.token}`;
-  try {
-    mkdirSync4(staging, { mode: 448 });
-    writeFileSync2(join4(staging, "owner.json"), `${JSON.stringify(owner, null, 2)}
-`, { mode: 384 });
-    renameSync2(staging, path);
-    return true;
-  } catch (error2) {
-    rmSync2(staging, { recursive: true, force: true });
-    if (["EEXIST", "ENOTEMPTY"].includes(error2.code ?? "")) return false;
-    throw error2;
-  }
-}
-function recoverStale(path, runnerId, identity, deps) {
-  const guard = `${path}.recovery`;
-  const guardOwner = {
-    pid: process.pid,
-    token: randomUUID3(),
-    runnerId,
-    startedAt: Date.now(),
-    processIdentity: identity
-  };
-  acquireRecoveryGuard(guard, guardOwner, deps);
-  try {
-    const owner = readOwner(path);
-    refuseLiveOrUnverifiableOwner(owner, deps);
-    if (!existsSync3(path)) return;
-    const quarantine = `${path}.stale-${process.pid}-${randomUUID3()}`;
-    try {
-      renameSync2(path, quarantine);
-      rmSync2(quarantine, { recursive: true, force: true });
-    } catch (error2) {
-      if (error2.code !== "ENOENT") throw error2;
-    }
-  } finally {
-    if (readOwner(guard)?.token === guardOwner.token) {
-      rmSync2(guard, { recursive: true, force: true });
-    }
-  }
-}
-function acquireRecoveryGuard(path, owner, deps) {
-  if (tryCreate(path, owner)) return;
-  const current = readOwner(path);
-  refuseLiveOrUnverifiableOwner(current, deps);
-  const quarantine = `${path}.stale-${process.pid}-${randomUUID3()}`;
-  try {
-    renameSync2(path, quarantine);
-    rmSync2(quarantine, { recursive: true, force: true });
-  } catch (error2) {
-    if (error2.code !== "ENOENT") throw error2;
-  }
-  if (tryCreate(path, owner)) return;
-  const winner = readOwner(path);
-  throw new RunnerFault("RUNNER_ALREADY_ACTIVE", "another process won runner-lock recovery", {
-    impact: "This process did not start polling or claim work.",
-    recovery: winner && isLockOwnerLive(winner, deps) ? "Run `engager-agent status`; retry after the existing process exits." : "Retry once; a concurrent stale-guard cleanup is still completing.",
-    retryable: true
-  });
-}
-function readOwner(path) {
-  try {
-    const value = JSON.parse(readFileSync3(join4(path, "owner.json"), "utf8"));
-    return typeof value.pid === "number" && typeof value.token === "string" ? value : null;
-  } catch {
-    return null;
-  }
-}
-function readRunnerLockOwner(runnerId) {
-  return readOwner(runnerLockPath(runnerId));
-}
-function isLockOwnerLive(owner, deps = REAL_IDENTITY_DEPS) {
-  if (!owner.processIdentity || !deps.alive(owner.pid)) return false;
-  const current = deps.identity(owner.pid);
-  return current != null && current === owner.processIdentity;
-}
-function processIdentity(pid) {
-  const executable = TRUSTED_PROCESS_IDENTITY_EXECUTABLES.find(existsSync3);
-  if (!executable) return null;
-  const result = spawnSync(executable, processIdentityArgs(pid), {
-    encoding: "utf8",
-    timeout: 2e3,
-    env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" }
-  });
-  const identity = result.status === 0 ? result.stdout.trim() : "";
-  return identity ? `${executable}
-${identity}` : null;
-}
-function processIdentityArgs(pid) {
-  return ["-p", String(pid), "-o", "lstart=", "-o", "command="];
-}
-function refuseLiveOrUnverifiableOwner(owner, deps) {
-  if (!owner || !deps.alive(owner.pid)) return;
-  if (!owner.processIdentity) {
-    throw processIdentityFault(`lock owner pid ${owner.pid} is live but has no verifiable process identity`);
-  }
-  const current = deps.identity(owner.pid);
-  if (current == null) {
-    throw processIdentityFault(`lock owner pid ${owner.pid} is live but its current identity lookup failed`);
-  }
-  if (current === owner.processIdentity) throw alreadyActive(owner);
-}
-function processIdentityFault(message) {
-  return new RunnerFault("RUNNER_ALREADY_ACTIVE", message, {
-    impact: "The runner refused to recover, signal, or overlap an ambiguously owned local lock.",
-    recovery: "Run `engager-agent doctor`; verify the system ps utility and remove a stale lock only after confirming its process is gone."
-  });
-}
-function alreadyActive(owner) {
-  return new RunnerFault(
-    "RUNNER_ALREADY_ACTIVE",
-    `runner process ${owner.pid || "unknown"} already owns this local identity`,
-    {
-      impact: "The second process did not poll, claim, or execute work.",
-      recovery: "Use `engager-agent status` or stop the existing process with `engager-agent stop`."
-    }
-  );
-}
-
-// src/markers.ts
-import { randomUUID as randomUUID4 } from "node:crypto";
-import { existsSync as existsSync4, readFileSync as readFileSync4, rmSync as rmSync3 } from "node:fs";
-import { join as join5 } from "node:path";
-function haltPath() {
-  return join5(agentHome(), "halted.json");
-}
-function pausePath() {
-  return join5(agentHome(), "paused.json");
-}
-function readJson(path) {
-  if (!existsSync4(path)) return null;
-  try {
-    return JSON.parse(readFileSync4(path, "utf8"));
-  } catch {
-    return CORRUPT;
-  }
-}
-var CORRUPT = Symbol("corrupt-control-marker");
-function writeJson(path, value) {
-  writePrivateJsonDurably(path, value);
-}
-function writeHalt(reason, consecutiveFailures) {
-  writeJson(haltPath(), {
-    at: Date.now(),
-    reason,
-    ...consecutiveFailures != null ? { consecutiveFailures } : {}
-  });
-}
-function readHalt() {
-  const value = readJson(haltPath());
-  if (isHaltMarker(value)) return value;
-  return value == null ? null : { at: 0, reason: "halt marker is corrupt; explicit resume required" };
-}
-function clearHalt() {
-  rmSync3(haltPath(), { force: true });
-}
-function writePause(until) {
-  writeJson(pausePath(), {
-    id: randomUUID4(),
-    at: Date.now(),
-    ...until != null ? { until } : {}
-  });
-}
-function readPause(now = Date.now()) {
-  const value = readJson(pausePath());
-  if (value == null) return null;
-  if (!isPauseMarker(value)) return { at: 0 };
-  const m2 = value;
-  if (m2.until != null && m2.until <= now) {
-    return null;
-  }
-  return m2;
-}
-function isRecord(value) {
-  return typeof value === "object" && value != null && !Array.isArray(value);
-}
-function isHaltMarker(value) {
-  return isRecord(value) && Number.isSafeInteger(value.at) && Number(value.at) >= 0 && typeof value.reason === "string" && value.reason.length > 0 && value.reason.length <= 1e3 && (value.consecutiveFailures === void 0 || Number.isSafeInteger(value.consecutiveFailures) && Number(value.consecutiveFailures) >= 0);
-}
-function isPauseMarker(value) {
-  return isRecord(value) && Number.isSafeInteger(value.at) && Number(value.at) >= 0 && (value.id === void 0 || typeof value.id === "string" && value.id.length > 0 && value.id.length <= 200) && (value.until === void 0 || Number.isSafeInteger(value.until) && Number(value.until) >= 0);
-}
-function clearPause() {
-  rmSync3(pausePath(), { force: true });
-}
-
-// src/service.ts
+// src/upgrade-transition.ts
 import { createHash } from "node:crypto";
-import { spawnSync as spawnSync2 } from "node:child_process";
 import {
-  chmodSync as chmodSync5,
-  copyFileSync,
-  existsSync as existsSync5,
+  closeSync as closeSync2,
+  constants as constants2,
+  existsSync as existsSync3,
+  fstatSync,
   lstatSync as lstatSync2,
-  mkdirSync as mkdirSync5,
-  mkdtempSync,
-  readFileSync as readFileSync5,
-  readlinkSync,
-  realpathSync,
-  renameSync as renameSync3,
-  rmSync as rmSync4,
-  symlinkSync,
-  writeFileSync as writeFileSync3
+  openSync as openSync2,
+  readFileSync as readFileSync3
 } from "node:fs";
-import { homedir as homedir2 } from "node:os";
-import { basename, dirname as dirname2, join as join6, relative } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// src/version.ts
-var AGENT_VERSION = true ? "0.9.0" : "0.9.0";
-
-// src/service.ts
-var SERVICE_LABEL = "com.engager.agent";
-function plistPath() {
-  const root = process.env.ENGAGER_LAUNCH_AGENTS_DIR ?? join6(homedir2(), "Library", "LaunchAgents");
-  return join6(root, `${SERVICE_LABEL}.plist`);
-}
-function runtimeRoot() {
-  return join6(agentHome(), "runtime");
-}
-function serviceEntryPath() {
-  return join6(runtimeRoot(), "current", "cli.mjs");
-}
-var xmlEscape = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-function renderPlist(options) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${SERVICE_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${xmlEscape(options.nodePath)}</string>
-    <string>${xmlEscape(options.scriptPath)}</string>
-    <string>run</string>
-    <string>--service</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PATH</key>
-    <string>${xmlEscape(options.pathEnv)}</string>
-  </dict>
-  <key>Umask</key>
-  <integer>63</integer>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <false/>
-  </dict>
-  <key>ThrottleInterval</key>
-  <integer>60</integer>
-  <key>StandardOutPath</key>
-  <string>${xmlEscape(options.logPath)}</string>
-  <key>StandardErrPath</key>
-  <string>${xmlEscape(options.logPath)}</string>
-</dict>
-</plist>
-`;
-}
-function stableBrewPath(path, resolve = (value) => value) {
-  const match = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/(.+)$/.exec(path);
-  if (!match) return path;
-  const candidate = `${match[1]}/opt/${match[2]}/${match[3]}`;
-  try {
-    if (resolve(candidate) === resolve(path)) return candidate;
-  } catch {
-  }
-  return candidate;
-}
-function isVolatileRuntimePath(path) {
-  return /(?:^|\/)(?:_npx|\.hermes|Caches?|tmp|\.cache)(?:\/|$)|\/(?:\.nvm\/versions|\.asdf\/installs|\.local\/share\/mise\/installs)\//i.test(
-    path
-  );
-}
-function resolveDurableNode() {
-  const which = spawnSync2("/usr/bin/which", ["node"], { encoding: "utf8" });
-  const candidates = [
-    "/opt/homebrew/bin/node",
-    "/usr/local/bin/node",
-    "/usr/bin/node",
-    which.status === 0 ? which.stdout.trim() : "",
-    process.execPath
-  ].filter(Boolean);
-  for (const raw of [...new Set(candidates)]) {
-    const candidate = stableBrewPath(raw);
-    if (isVolatileRuntimePath(candidate) || !existsSync5(candidate)) continue;
-    let resolved;
-    try {
-      resolved = realpathSync(candidate);
-    } catch {
-      continue;
-    }
-    if (isVolatileRuntimePath(resolved)) continue;
-    const version2 = spawnSync2(candidate, ["--version"], { encoding: "utf8", timeout: 5e3 });
-    const major = Number(/^v?(\d+)/.exec((version2.stdout || version2.stderr).trim())?.[1]);
-    if (version2.status === 0 && major >= 20) return candidate;
-  }
-  return null;
-}
-function resolveSourceBundle() {
-  const self = fileURLToPath(import.meta.url);
-  if (basename(self) === "engager-agent.mjs") return self;
-  return join6(dirname2(dirname2(self)), "bundle", "engager-agent.mjs");
-}
-function installDurablePayload(version2 = AGENT_VERSION, sourceBundle = resolveSourceBundle()) {
-  if (!existsSync5(sourceBundle)) {
-    throw new Error(`SERVICE_ENTRY_MISSING: built runner bundle not found at ${sourceBundle}`);
-  }
-  const bytes = readFileSync5(sourceBundle);
-  const sourceDirectory = dirname2(sourceBundle);
-  const watchdogSource = join6(sourceDirectory, "engine-watchdog.mjs");
-  if (!existsSync5(watchdogSource)) {
-    throw new Error("SERVICE_ENTRY_MISSING: audited engine watchdog is missing");
-  }
-  const watchdogBytes = readFileSync5(watchdogSource);
-  const assetCandidates = [sourceDirectory, dirname2(sourceDirectory)];
-  const assets = ["LICENSE", "THIRD_PARTY_NOTICES", "THIRD_PARTY_COMPONENTS.json"].map((name2) => {
-    const source = assetCandidates.map((directory) => join6(directory, name2)).find(existsSync5);
-    if (!source) throw new Error(`SERVICE_ENTRY_MISSING: audited payload asset ${name2} is missing`);
-    return { name: name2, source };
-  });
-  const sha256 = createHash("sha256").update(bytes).update(watchdogBytes).digest("hex");
-  const versions = join6(runtimeRoot(), "versions");
-  mkdirSync5(versions, { recursive: true, mode: 448 });
-  chmodSync5(runtimeRoot(), 448);
-  chmodSync5(versions, 448);
-  const name = `${version2}-${sha256.slice(0, 16)}`;
-  const target = join6(versions, name);
-  if (!existsSync5(target)) {
-    const staging = mkdtempSync(join6(versions, ".staging-"));
-    const stagedEntry = join6(staging, "cli.mjs");
-    const stagedWatchdog = join6(staging, "engine-watchdog.mjs");
-    copyFileSync(sourceBundle, stagedEntry);
-    copyFileSync(watchdogSource, stagedWatchdog);
-    chmodSync5(stagedEntry, 320);
-    chmodSync5(stagedWatchdog, 320);
-    for (const asset of assets) {
-      const targetAsset = join6(staging, asset.name);
-      copyFileSync(asset.source, targetAsset);
-      chmodSync5(targetAsset, 256);
-    }
-    const copied = createHash("sha256").update(readFileSync5(stagedEntry)).update(readFileSync5(stagedWatchdog)).digest("hex");
-    if (copied !== sha256) {
-      rmSync4(staging, { recursive: true, force: true });
-      throw new Error("SERVICE_ENTRY_MISSING: copied runner bundle failed SHA-256 verification");
-    }
-    renameSync3(staging, target);
-  }
-  return {
-    version: version2,
-    sha256,
-    versionDir: target,
-    versionEntryPath: join6(target, "cli.mjs")
-  };
-}
-function activateDurablePayload(payload) {
-  const current = join6(runtimeRoot(), "current");
-  const previous = join6(runtimeRoot(), "previous");
-  const snapshot = {
-    currentTarget: readSymlink(current),
-    previousTarget: readSymlink(previous)
-  };
-  if (snapshot.currentTarget) atomicSymlink(previous, snapshot.currentTarget);
-  else rmSync4(previous, { recursive: true, force: true });
-  atomicSymlink(current, relative(runtimeRoot(), payload.versionDir));
-  return snapshot;
-}
-function restoreDurableActivation(snapshot) {
-  restoreSymlink(join6(runtimeRoot(), "current"), snapshot.currentTarget);
-  restoreSymlink(join6(runtimeRoot(), "previous"), snapshot.previousTarget);
-}
-var uid = () => process.getuid?.() ?? 501;
-var domainTarget = () => `gui/${uid()}`;
-var serviceTarget = () => `${domainTarget()}/${SERVICE_LABEL}`;
-function launchctl(...args) {
-  const result = spawnSync2("launchctl", args, { encoding: "utf8" });
-  return {
-    status: result.status,
-    out: `${result.stdout ?? ""}${result.stderr ?? ""}`
-  };
-}
-function serviceState() {
-  const installed = existsSync5(plistPath());
-  const entryExists = existsSync5(serviceEntryPath());
-  if (process.platform !== "darwin") {
-    return { supported: false, installed, entryExists, loaded: false };
-  }
-  const result = launchctl("print", serviceTarget());
-  if (result.status !== 0) return { supported: true, installed, entryExists, loaded: false };
-  const pid = /\bpid\s*=\s*(\d+)/.exec(result.out)?.[1];
-  const numericPid = pid ? Number(pid) : void 0;
-  return {
-    supported: true,
-    installed,
-    entryExists,
-    loaded: numericPid != null && pidAlive(numericPid),
-    ...numericPid != null ? { pid: numericPid } : {}
-  };
-}
-function installService(version2 = AGENT_VERSION) {
-  if (process.platform !== "darwin") {
-    return { ok: false, note: "native background service is macOS-only; use `engager-agent run`" };
-  }
-  const nodePath = resolveDurableNode();
-  if (!nodePath) {
-    return {
-      ok: false,
-      note: "SERVICE_ENTRY_MISSING: no durable Node 20+ runtime found (temporary, npx, nvm/asdf/mise, and Codex-owned runtimes are refused)"
-    };
-  }
-  const config2 = loadConfig();
-  if (!config2) {
-    return {
-      ok: false,
-      note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` before installing the background service"
-    };
-  }
-  let payload;
-  try {
-    payload = installDurablePayload(version2);
-  } catch (error2) {
-    return { ok: false, note: error2 instanceof Error ? error2.message : String(error2) };
-  }
-  const smoke = spawnSync2(nodePath, [payload.versionEntryPath, "--version"], {
-    encoding: "utf8",
-    timeout: 1e4
-  });
-  if (smoke.status !== 0 || smoke.stdout.trim() !== version2) {
-    return { ok: false, note: "SERVICE_ENTRY_MISSING: durable runner bundle failed its version smoke test" };
-  }
-  const logDir = join6(agentHome(), "logs");
-  mkdirSync5(logDir, { recursive: true, mode: 448 });
-  chmodSync5(logDir, 448);
-  mkdirSync5(dirname2(plistPath()), { recursive: true });
-  const plist = renderPlist({
-    nodePath,
-    scriptPath: serviceEntryPath(),
-    logPath: join6(logDir, "service.log"),
-    pathEnv: trustedServicePath(nodePath, config2.enginePath)
-  });
-  const path = plistPath();
-  const tmp = `${path}.${process.pid}.tmp`;
-  writeFileSync3(tmp, plist, { mode: 384 });
-  const lint = spawnSync2("plutil", ["-lint", tmp], { encoding: "utf8" });
-  if (lint.status !== 0) {
-    rmSync4(tmp, { force: true });
-    return { ok: false, note: `SERVICE_ENTRY_MISSING: invalid launchd plist: ${lint.stderr.trim()}` };
-  }
-  const priorPlist = existsSync5(path) ? readFileSync5(path) : null;
-  const activation = activateDurablePayload(payload);
-  try {
-    renameSync3(tmp, path);
-    chmodSync5(path, 384);
-    const launchedAt = Date.now();
-    const enabled = launchctl("enable", serviceTarget());
-    if (enabled.status !== 0) throw new Error(`launchctl enable failed: ${enabled.out.trim().slice(0, 300)}`);
-    launchctl("bootout", serviceTarget());
-    const boot = launchctl("bootstrap", domainTarget(), path);
-    if (boot.status !== 0) {
-      const legacy = launchctl("load", "-w", path);
-      if (legacy.status !== 0) {
-        throw new Error(`launchctl failed: ${boot.out.trim().slice(0, 300)}`);
-      }
-    }
-    const verification = waitForServiceLoad({
-      notBefore: launchedAt,
-      expectedVersion: version2
-    });
-    if (!verification.ok) {
-      throw new Error(`launchd startup verification failed: ${verification.reason}`);
-    }
-    return {
-      ok: true,
-      note: `installed ${SERVICE_LABEL} from verified payload ${version2}-${payload.sha256.slice(0, 12)}`
-    };
-  } catch (error2) {
-    launchctl("bootout", serviceTarget());
-    restoreDurableActivation(activation);
-    restorePlist(path, priorPlist);
-    let restoreFailure = "";
-    if (priorPlist && activation.currentTarget) {
-      launchctl("enable", serviceTarget());
-      const restored = launchctl("bootstrap", domainTarget(), path);
-      if (restored.status !== 0) restoreFailure = `; prior service restore also failed: ${restored.out.trim().slice(0, 200)}`;
-    }
-    return {
-      ok: false,
-      note: `SERVICE_ENTRY_MISSING: service install rolled back: ${error2 instanceof Error ? error2.message : String(error2)}${restoreFailure}`
-    };
-  } finally {
-    rmSync4(tmp, { force: true });
-  }
-}
-function uninstallService() {
-  if (process.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
-  const stopped = launchctl("bootout", serviceTarget());
-  const tolerated = /could not find service|no such process/i.test(stopped.out);
-  if (stopped.status !== 0 && !tolerated) {
-    return { ok: false, note: `launchctl uninstall stop failed: ${stopped.out.trim().slice(0, 300)}` };
-  }
-  rmSync4(plistPath(), { force: true });
-  return { ok: true, note: `removed ${SERVICE_LABEL}; configuration and versioned runtime were preserved` };
-}
-function stopService() {
-  if (process.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
-  const bootout = launchctl("bootout", serviceTarget());
-  const disable = launchctl("disable", serviceTarget());
-  const tolerated = /could not find service|no such process/i.test(bootout.out);
-  return bootout.status === 0 || tolerated ? { ok: disable.status === 0, note: `${SERVICE_LABEL} stopped and disabled` } : { ok: false, note: `launchctl stop failed: ${bootout.out.trim().slice(0, 300)}` };
-}
-var REAL_START_SERVICE_DEPS = {
-  platform: process.platform,
-  exists: existsSync5,
-  now: Date.now,
-  launch: launchctl,
-  wait: waitForServiceLoad
-};
-function startService(deps = REAL_START_SERVICE_DEPS) {
-  if (deps.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
-  if (!deps.exists(plistPath()) || !deps.exists(serviceEntryPath())) {
-    return { ok: false, note: "SERVICE_ENTRY_MISSING: run `engager-agent service install --repair`" };
-  }
-  const launchedAt = deps.now();
-  const enabled = deps.launch("enable", serviceTarget());
-  if (enabled.status !== 0) {
-    return { ok: false, note: `launchctl enable failed: ${enabled.out.trim().slice(0, 300)}` };
-  }
-  const boot = deps.launch("bootstrap", domainTarget(), plistPath());
-  const launched = boot.status === 0 ? boot : deps.launch("kickstart", "-k", serviceTarget());
-  if (launched.status !== 0) {
-    return { ok: false, note: `launchctl start failed: ${launched.out.trim().slice(0, 300)}` };
-  }
-  const verification = deps.wait({ notBefore: launchedAt });
-  if (verification.ok) {
-    return {
-      ok: true,
-      note: `${SERVICE_LABEL} started with current server control and engine readiness verified`
-    };
-  }
-  const stopped = deps.launch("bootout", serviceTarget());
-  const stopNote = stopped.status === 0 || /could not find service|no such process/i.test(stopped.out) ? "the unverified service was stopped" : `WARNING: unverified service stop failed: ${stopped.out.trim().slice(0, 200)}`;
-  return {
-    ok: false,
-    note: `${SERVICE_LABEL} startup verification failed: ${verification.reason}; ${stopNote}`
-  };
-}
-function atomicSymlink(path, target) {
-  const tmp = `${path}.${process.pid}.tmp`;
-  rmSync4(tmp, { recursive: true, force: true });
-  symlinkSync(target, tmp, "dir");
-  renameSync3(tmp, path);
-}
-function restoreSymlink(path, target) {
-  if (target) atomicSymlink(path, target);
-  else rmSync4(path, { recursive: true, force: true });
-}
-function restorePlist(path, contents) {
-  if (!contents) {
-    rmSync4(path, { force: true });
-    return;
-  }
-  const tmp = `${path}.${process.pid}.rollback`;
-  writeFileSync3(tmp, contents, { mode: 384 });
-  renameSync3(tmp, path);
-  chmodSync5(path, 384);
-}
-var REAL_SERVICE_WAIT_DEPS = {
-  now: Date.now,
-  service: serviceState,
-  status: readStatus,
-  pause: (milliseconds) => {
-    const wait = new Int32Array(new SharedArrayBuffer(4));
-    Atomics.wait(wait, 0, 0, milliseconds);
-  }
-};
-function waitForServiceLoad(options, timeoutMs = 45e3, deps = REAL_SERVICE_WAIT_DEPS) {
-  const deadline = deps.now() + timeoutMs;
-  do {
-    const verification = serviceVerificationState(
-      deps.service(),
-      deps.status(),
-      options
-    );
-    if (verification.state === "verified") return { ok: true };
-    if (verification.state === "terminal") {
-      return { ok: false, reason: verification.reason };
-    }
-    deps.pause(150);
-  } while (deps.now() < deadline);
-  return {
-    ok: false,
-    reason: "timed out waiting for current protocol control and engine readiness"
-  };
-}
-function serviceVerificationState(service, status, options = { notBefore: 0 }) {
-  const current = Boolean(
-    service.loaded && service.pid != null && status?.pid === service.pid && status.startedAt >= options.notBefore && (options.expectedVersion == null || status.version === options.expectedVersion) && pidAlive(service.pid)
-  );
-  if (!current || !status) return { state: "pending" };
-  const protocolVerified = status.protocol === "2.1" && status.protocolVerifiedAt != null && status.protocolVerifiedAt >= status.startedAt;
-  const engineVerified = status.engineReadyAt != null && status.engineReadyAt >= status.startedAt && status.engineReadyAt >= options.notBefore;
-  const startupVerified = status.startupVerifiedAt != null && status.startupVerifiedAt >= status.startedAt && status.startupVerifiedAt >= options.notBefore;
-  if (protocolVerified && engineVerified && startupVerified && status.state !== "halted" && status.state !== "upgrade-required") {
-    return { state: "verified" };
-  }
-  const reasonCode = status.quotaState?.reasonCode;
-  if (protocolVerified && !engineVerified && typeof reasonCode === "string" && TERMINAL_ENGINE_READINESS_REASONS.has(reasonCode)) {
-    return {
-      state: "terminal",
-      reason: engineReadinessFailureReason(reasonCode)
-    };
-  }
-  return { state: "pending" };
-}
-var TERMINAL_ENGINE_READINESS_REASONS = /* @__PURE__ */ new Set([
-  "engine_not_found",
-  "engine_unsupported_version",
-  "engine_auth_required",
-  "engine_auth_probe_unknown",
-  "engine_probe_failed"
-]);
-function engineReadinessFailureReason(reasonCode) {
-  const detail = {
-    engine_not_found: "the configured engine executable was not found",
-    engine_unsupported_version: "the configured engine version or capability surface is unsupported",
-    engine_auth_required: "the configured engine is not authenticated",
-    engine_auth_probe_unknown: "the configured engine authentication state could not be verified",
-    engine_probe_failed: "the configured engine readiness probe failed"
-  };
-  return `${detail[reasonCode] ?? "the configured engine is not ready"} (${reasonCode}); run \`engager-agent doctor\``;
-}
-function trustedServicePath(nodePath, enginePath) {
-  return [.../* @__PURE__ */ new Set([
-    dirname2(nodePath),
-    dirname2(enginePath),
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin"
-  ])].join(":");
-}
-function readSymlink(path) {
-  try {
-    return lstatSync2(path).isSymbolicLink() ? readlinkSync(path) : null;
-  } catch {
-    return null;
-  }
-}
-
-// src/commands.ts
-var fmtAge = (timestamp, now) => {
-  const minutes = Math.round((now - timestamp) / 6e4);
-  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : `${Math.round(minutes / 60)} h ago`;
-};
-function statusCommand(json) {
-  const now = Date.now();
-  const config2 = loadConfig();
-  const status = readStatus();
-  const halt = readHalt();
-  const pause = readPause(now);
-  const service = serviceState();
-  const owner = config2 ? readRunnerLockOwner(config2.runnerId) : null;
-  const alive = status != null && owner?.pid === status.pid && isLockOwnerLive(owner);
-  const verdict = halt ? `HALTED \u2014 ${halt.reason}` : !config2 ? configFileMode() != null && configFileMode() !== 384 ? "configuration blocked \u2014 agent.json must be 0600" : "not configured" : alive ? pause ? "paused locally" : `running \u2014 ${status.state}` : service.loaded ? "service loaded; waiting for runner heartbeat" : "not running";
-  const safeConfig = config2 ? {
-    mcpUrl: config2.mcpUrl,
-    runnerId: config2.runnerId,
-    engine: config2.engine,
-    model: config2.model ?? null,
-    dailySessionCap: config2.dailySessionCap,
-    legacyCompatibility: config2.legacy != null
-  } : null;
-  if (json) {
-    process.stdout.write(
-      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service }, null, 2)}
-`
-    );
-    return;
-  }
-  const lines = [`engager-agent: ${verdict}`];
-  if (config2) {
-    lines.push(
-      `  engine ${config2.engine}${config2.model ? ` (${config2.model})` : " (provider default)"} \xB7 runner ${config2.runnerId}`
-    );
-  }
-  if (status) {
-    lines.push(
-      `  protocol ${status.protocol ?? "not negotiated"} \xB7 sessions today ${status.sessionsToday}/${config2?.dailySessionCap ?? "?"}`
-    );
-    if (status.lastCycle) {
-      const blocked = status.lastCycle.errorCode === "ENGINE_QUOTA" || status.lastCycle.errorCode === "ENGINE_OVERLOADED" || status.lastCycle.errorCode === "CONTRACT_UPGRADE_REQUIRED";
-      lines.push(
-        `  last cycle ${status.lastCycle.ok ? "ok" : blocked ? "BLOCKED" : "FAILED"} ${fmtAge(status.lastCycle.at, now)} \u2014 ${status.lastCycle.note}`
-      );
-      if (status.lastCycle.receipt) {
-        const receipt = status.lastCycle.receipt;
-        lines.push(
-          `  last receipt ${receipt.status} \xB7 accepted ${receipt.accepted} \xB7 existing ${receipt.alreadyExists} \xB7 rejected ${receipt.rejected} \xB7 failed ${receipt.failed} \xB7 unfinished ${receipt.unfinished}`
-        );
-      }
-    }
-    if (status.nextPollAt && alive) lines.push(`  next control poll ${new Date(status.nextPollAt).toLocaleTimeString()}`);
-  }
-  lines.push(
-    `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`
-  );
-  lines.push(
-    config2 ? "  next: engager-agent doctor" : "  next: engager-agent setup"
-  );
-  process.stdout.write(`${lines.join("\n")}
-`);
-}
-function pauseCommand(duration3) {
-  let until;
-  if (duration3) {
-    const milliseconds = parseDuration(duration3);
-    if (milliseconds == null) {
-      log(`could not parse duration "${duration3}" \u2014 use 30m, 2h, or 1d`);
-      process.exitCode = 1;
-      return;
-    }
-    until = Date.now() + milliseconds;
-  }
-  writePause(until);
-  log(`paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}`);
-}
-function resumeCommand() {
-  clearHalt();
-  clearPause();
-  const status = readStatus();
-  if (status) {
-    writeStatus({
-      ...status,
-      quotaState: {
-        status: "available",
-        reasonCode: "manual_resume",
-        observedAt: Date.now()
-      }
-    });
-  }
-  const service = serviceState();
-  if (service.installed) {
-    const result = startService();
-    log(result.note);
-    if (!result.ok) process.exitCode = 1;
-  } else {
-    log("local pause/halt cleared \u2014 start with `engager-agent run`");
-  }
-}
-var REAL_STOP_DEPS = {
-  serviceState,
-  stopService,
-  loadConfig,
-  readOwner: readRunnerLockOwner,
-  ownerLive: isLockOwnerLive,
-  kill: process.kill.bind(process),
-  output: log
-};
-function stopCommand(deps = REAL_STOP_DEPS) {
-  const service = deps.serviceState();
-  let serviceFailed = false;
-  if (service.installed) {
-    const result = deps.stopService();
-    deps.output(result.note);
-    serviceFailed = !result.ok;
-  }
-  const config2 = deps.loadConfig();
-  const owner = deps.readOwner(config2?.runnerId ?? "global");
-  if (owner?.processIdentity && deps.ownerLive(owner)) {
-    deps.kill(owner.pid, "SIGTERM");
-    deps.output(`sent SIGTERM to verified runner lock owner pid ${owner.pid}`);
-  } else if (owner && !owner.processIdentity) {
-    deps.output("runner lock owner has no verifiable process identity; refusing to signal its pid");
-    process.exitCode = 1;
-  } else {
-    deps.output("runner is not running (no verified live lock owner)");
-  }
-  if (serviceFailed) process.exitCode = 1;
-}
-function startCommand() {
-  const state = serviceState();
-  if (!state.installed) return false;
-  const result = startService();
-  log(result.note);
-  if (!result.ok) process.exitCode = 1;
-  return true;
-}
-function serviceCommand(action, version2) {
-  const result = action === "install" || action === "repair" ? installService(version2) : action === "uninstall" ? uninstallService() : null;
-  if (action === "status") {
-    statusCommand(false);
-    return;
-  }
-  if (!result) {
-    log("usage: engager-agent service <install|repair|status|uninstall>");
-    process.exitCode = 1;
-    return;
-  }
-  log(result.note);
-  if (!result.ok) process.exitCode = 1;
-}
-function logsCommand(lines = 80) {
-  const directory = join7(agentHome(), "logs");
-  if (!existsSync6(directory)) {
-    process.stdout.write("No runner logs yet.\n");
-    return;
-  }
-  const files = readdirSync(directory).filter((file) => file.endsWith(".log")).sort();
-  const latest = files.at(-1);
-  if (!latest) {
-    process.stdout.write("No runner logs yet.\n");
-    return;
-  }
-  const count = Number.isFinite(lines) ? Math.min(1e3, Math.max(1, Math.floor(lines))) : 80;
-  const safe = sanitizeLogText(readFileSync6(join7(directory, latest), "utf8"));
-  const tail = safe.split("\n").slice(-count);
-  process.stdout.write(`${tail.join("\n")}
-`);
-}
-function sanitizeLogText(value) {
-  const redacted = redact(value, [loadConfig()?.apiKey]).replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]").replace(/("?(?:api[_-]?key|token|secret)"?\s*[:=]\s*)"?[^\s",}]+"?/gi, "$1[REDACTED]");
-  return redacted.split(/\r?\n/).map((line) => sanitizeTerminalText(line)).join("\n");
-}
-function parseDuration(value) {
-  const match = /^(\d+(?:\.\d+)?)\s*(m|min|h|hr|d)$/i.exec(value.trim());
-  if (!match) return null;
-  const amount = Number(match[1]);
-  const unit = match[2].toLowerCase();
-  const milliseconds = unit.startsWith("m") ? amount * 6e4 : unit.startsWith("h") ? amount * 36e5 : amount * 864e5;
-  return Number.isFinite(milliseconds) && milliseconds > 0 ? milliseconds : null;
-}
-var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
-  "--version",
-  "-v",
-  "--help",
-  "-h",
-  "--once",
-  "--service",
-  "--json",
-  "--repair",
-  "--reauthorize"
-]);
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["--for", "--tail", "--setup-proof-org"]);
-function findUnknownFlag(argv) {
-  for (let index = 0; index < argv.length; index++) {
-    const value = argv[index];
-    if (!value?.startsWith("-")) continue;
-    if (BOOLEAN_FLAGS.has(value)) continue;
-    if (VALUE_FLAGS.has(value)) {
-      index += 1;
-      continue;
-    }
-    return value;
-  }
-  return void 0;
-}
-
-// src/engines/claude.ts
-import { randomBytes as randomBytes2 } from "node:crypto";
-import { spawnSync as spawnSync4 } from "node:child_process";
-
-// src/engine.ts
-import { fork, spawn, spawnSync as spawnSync3 } from "node:child_process";
-import { accessSync, constants as constants2, existsSync as existsSync7, realpathSync as realpathSync2 } from "node:fs";
-import { delimiter, dirname as dirname3, isAbsolute as isAbsolute2, join as join8 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { join as join4 } from "node:path";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -8803,15 +7946,15 @@ var makeIssue = (params) => {
       message: issueData.message
     };
   }
-  let errorMessage = "";
+  let errorMessage2 = "";
   const maps = errorMaps.filter((m2) => !!m2).slice().reverse();
   for (const map of maps) {
-    errorMessage = map(fullIssue, { data, defaultError: errorMessage }).message;
+    errorMessage2 = map(fullIssue, { data, defaultError: errorMessage2 }).message;
   }
   return {
     ...issueData,
     path: fullPath,
-    message: errorMessage
+    message: errorMessage2
   };
 };
 var EMPTY_PATH = [];
@@ -12353,6 +11496,1842 @@ var coerce = {
 };
 var NEVER = INVALID;
 
+// src/upgrade-transition.ts
+var UPGRADE_TRANSITION_PHASES = [
+  "prepared",
+  "service_stopped",
+  "payload_activated",
+  "plist_installed",
+  "service_bootstrapped"
+];
+var StoredFileSchema = external_exports.object({
+  present: external_exports.boolean(),
+  sha256: external_exports.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  contentsBase64: external_exports.string().max(5e5).nullable()
+}).strict().superRefine((value, ctx) => {
+  const complete = value.sha256 != null && value.contentsBase64 != null;
+  if (value.present !== complete) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "stored file snapshot is incomplete" });
+    return;
+  }
+  if (value.present) {
+    let bytes;
+    try {
+      bytes = Buffer.from(value.contentsBase64, "base64");
+    } catch {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "stored file snapshot is not base64" });
+      return;
+    }
+    if (bytes.toString("base64") !== value.contentsBase64) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "stored file snapshot is not canonical base64" });
+      return;
+    }
+    if (sha256(bytes) !== value.sha256) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "stored file snapshot hash mismatch" });
+    }
+  }
+});
+var LinkSnapshotSchema = external_exports.object({
+  target: external_exports.string().min(1).max(500).nullable(),
+  payloadSha256: external_exports.string().regex(/^[a-f0-9]{64}$/).nullable()
+}).strict().superRefine((value, ctx) => {
+  if (value.target == null !== (value.payloadSha256 == null)) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "runtime link snapshot is incomplete" });
+  }
+  if (value.target != null && !isManagedRuntimeTarget(value.target)) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "runtime link target is outside managed versions" });
+  }
+});
+var UpgradeTransitionSchema = external_exports.object({
+  schemaVersion: external_exports.literal(1),
+  phase: external_exports.enum(UPGRADE_TRANSITION_PHASES),
+  createdAt: external_exports.number().int().nonnegative(),
+  updatedAt: external_exports.number().int().nonnegative(),
+  prior: external_exports.object({
+    installed: external_exports.boolean(),
+    loaded: external_exports.boolean(),
+    disabled: external_exports.boolean(),
+    current: LinkSnapshotSchema,
+    previous: LinkSnapshotSchema,
+    plist: StoredFileSchema
+  }).strict(),
+  target: external_exports.object({
+    installed: external_exports.boolean(),
+    disabled: external_exports.boolean(),
+    version: external_exports.string().min(1).max(100),
+    payloadSha256: external_exports.string().regex(/^[a-f0-9]{64}$/),
+    linkTarget: external_exports.string().min(1).max(500).refine(isManagedRuntimeTarget),
+    previous: LinkSnapshotSchema,
+    plist: StoredFileSchema
+  }).strict()
+}).strict().superRefine((value, ctx) => {
+  if (value.updatedAt < value.createdAt) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "transition timestamps are reversed" });
+  }
+  if (value.prior.loaded && (!value.prior.installed || value.prior.disabled)) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "loaded prior service intent is inconsistent" });
+  }
+  if (value.prior.installed !== value.prior.plist.present) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "prior service/plist presence is inconsistent" });
+  }
+  if (value.target.installed !== value.target.plist.present) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "target service/plist presence is inconsistent" });
+  }
+  if (value.prior.installed && !value.prior.disabled && value.prior.current.target == null) {
+    ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: "enabled prior service has no restorable payload" });
+  }
+});
+function upgradeTransitionPath() {
+  return join4(agentHome(), "upgrade-transition.json");
+}
+function hasUpgradeTransition() {
+  try {
+    lstatSync2(upgradeTransitionPath());
+    return true;
+  } catch (error2) {
+    if (error2.code === "ENOENT") return false;
+    throw error2;
+  }
+}
+function fileSnapshot(contents) {
+  return contents == null ? { present: false, sha256: null, contentsBase64: null } : {
+    present: true,
+    sha256: sha256(contents),
+    contentsBase64: contents.toString("base64")
+  };
+}
+function fileSnapshotContents(snapshot) {
+  const parsed = StoredFileSchema.parse(snapshot);
+  return parsed.present ? Buffer.from(parsed.contentsBase64, "base64") : null;
+}
+function writeUpgradeTransition(transition) {
+  const parsed = prepareUpgradeTransition(transition);
+  writePrivateJsonDurably(upgradeTransitionPath(), parsed);
+  return parsed;
+}
+function prepareUpgradeTransition(transition) {
+  return UpgradeTransitionSchema.parse({
+    ...transition,
+    updatedAt: transition.updatedAt ?? Date.now()
+  });
+}
+function advanceUpgradeTransition(transition, phase) {
+  const currentIndex = UPGRADE_TRANSITION_PHASES.indexOf(transition.phase);
+  const nextIndex = UPGRADE_TRANSITION_PHASES.indexOf(phase);
+  if (nextIndex < currentIndex) {
+    throw new Error(`refusing non-monotonic upgrade transition ${transition.phase} -> ${phase}`);
+  }
+  return writeUpgradeTransition({ ...transition, phase, updatedAt: Date.now() });
+}
+function readUpgradeTransition() {
+  const path = upgradeTransitionPath();
+  let fd;
+  try {
+    fd = openSync2(path, constants2.O_RDONLY | constants2.O_NOFOLLOW);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return null;
+    throw error2;
+  }
+  try {
+    const stat = fstatSync(fd);
+    const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
+    if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
+      throw new Error("upgrade transition journal is not a private 0600 regular file");
+    }
+    if (stat.size > 1e6) throw new Error("upgrade transition journal exceeds 1 MB");
+    return UpgradeTransitionSchema.parse(JSON.parse(readFileSync3(fd, "utf8")));
+  } finally {
+    closeSync2(fd);
+  }
+}
+function clearUpgradeTransition() {
+  if (existsSync3(upgradeTransitionPath())) removePathDurably(upgradeTransitionPath());
+}
+function sha256(contents) {
+  return createHash("sha256").update(contents).digest("hex");
+}
+function isManagedRuntimeTarget(value) {
+  return /^versions\/[A-Za-z0-9._-]+$/.test(value);
+}
+
+// src/lock.ts
+var REAL_IDENTITY_DEPS = {
+  identity: processIdentity,
+  alive: pidAlive
+};
+var TRUSTED_PROCESS_IDENTITY_EXECUTABLES = ["/bin/ps", "/usr/bin/ps"];
+var MAINTENANCE_TOKEN_ENV = "ENGAGER_AGENT_MAINTENANCE_TOKEN";
+function locksRoot() {
+  return join5(agentHome(), "locks");
+}
+function runnerLockPath(runnerId) {
+  void runnerId;
+  return join5(locksRoot(), "agent.lock");
+}
+function maintenanceLockPath() {
+  return join5(locksRoot(), "maintenance.lock");
+}
+function acquireRunnerLock(runnerId, deps = REAL_IDENTITY_DEPS, maintenanceToken = process.env[MAINTENANCE_TOKEN_ENV]) {
+  mkdirSync4(locksRoot(), { recursive: true, mode: 448 });
+  chmodSync4(locksRoot(), 448);
+  assertMaintenanceAccess(deps, maintenanceToken);
+  const lock = acquireNamedLock(runnerLockPath(runnerId), runnerId, deps);
+  try {
+    assertMaintenanceAccess(deps, maintenanceToken);
+    if (maintenanceToken && process.env[MAINTENANCE_TOKEN_ENV] === maintenanceToken) {
+      delete process.env[MAINTENANCE_TOKEN_ENV];
+    }
+    return lock;
+  } catch (error2) {
+    lock.release();
+    throw error2;
+  }
+}
+function acquireMaintenanceLock(runnerId, deps = REAL_IDENTITY_DEPS) {
+  mkdirSync4(locksRoot(), { recursive: true, mode: 448 });
+  chmodSync4(locksRoot(), 448);
+  return acquireNamedLock(maintenanceLockPath(), runnerId, deps);
+}
+function acquireNamedLock(path, runnerId, deps) {
+  const identity = deps.identity(process.pid);
+  if (!identity) throw processIdentityFault("current runner process identity could not be established");
+  const owner = {
+    pid: process.pid,
+    token: randomUUID3(),
+    runnerId,
+    startedAt: Date.now(),
+    processIdentity: identity
+  };
+  if (!tryCreate(path, owner)) {
+    const current = inspectOwner(path);
+    refuseLiveOrUnverifiableOwner(current, deps);
+    recoverStale(path, runnerId, identity, deps);
+    if (!tryCreate(path, owner)) {
+      const winner = inspectOwner(path);
+      if (winner.state === "invalid") throw invalidLockFault("lock", winner.detail);
+      throw alreadyActive(winner.state === "valid" ? winner.owner : { ...owner, pid: 0 });
+    }
+  }
+  let released = false;
+  return {
+    path,
+    owner,
+    release: () => {
+      if (released) return;
+      released = true;
+      const current = inspectOwner(path);
+      if (current.state === "valid" && current.owner.token === owner.token) {
+        rmSync2(path, { recursive: true, force: true });
+      }
+    }
+  };
+}
+function assertMaintenanceAccess(deps, maintenanceToken) {
+  const inspection = inspectOwner(maintenanceLockPath());
+  const transitionPending = hasUpgradeTransition();
+  if (inspection.state === "invalid") {
+    throw invalidLockFault("maintenance lock", inspection.detail);
+  }
+  if (inspection.state === "absent") {
+    if (transitionPending) throw transitionRecoveryFault();
+    return;
+  }
+  const owner = inspection.owner;
+  if (!deps.alive(owner.pid)) {
+    if (transitionPending) throw transitionRecoveryFault();
+    return;
+  }
+  if (!owner.processIdentity) {
+    throw processIdentityFault(
+      `maintenance owner pid ${owner.pid} is live but has no verifiable process identity`
+    );
+  }
+  const current = deps.identity(owner.pid);
+  if (current == null) {
+    throw processIdentityFault(
+      `maintenance owner pid ${owner.pid} identity lookup failed`
+    );
+  }
+  if (current !== owner.processIdentity) {
+    if (transitionPending) throw transitionRecoveryFault();
+    return;
+  }
+  if (maintenanceToken === owner.token) return;
+  throw new RunnerFault(
+    "RUNNER_ALREADY_ACTIVE",
+    "runner maintenance is activating and verifying a durable payload",
+    {
+      impact: "This process did not poll, claim, or execute work during the upgrade transition.",
+      recovery: "Wait for `engager-agent upgrade` to finish, then retry.",
+      retryable: true
+    }
+  );
+}
+function transitionRecoveryFault() {
+  return new RunnerFault(
+    "RUNNER_ALREADY_ACTIVE",
+    "an interrupted service transition requires deterministic recovery",
+    {
+      impact: "This process did not poll, claim, or execute work against an ambiguous runtime payload.",
+      recovery: "Run `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start` to reconcile it.",
+      retryable: true
+    }
+  );
+}
+function tryCreate(path, owner) {
+  try {
+    mkdirSync4(path, { mode: 448 });
+    try {
+      writeFileSync2(join5(path, "owner.json"), `${JSON.stringify(owner, null, 2)}
+`, {
+        mode: 384,
+        flag: "wx"
+      });
+    } catch (error2) {
+      rmSync2(path, { recursive: true, force: true });
+      throw error2;
+    }
+    return true;
+  } catch (error2) {
+    if (["EEXIST", "ENOTEMPTY"].includes(error2.code ?? "")) return false;
+    throw error2;
+  }
+}
+function recoverStale(path, runnerId, identity, deps) {
+  const guard = `${path}.recovery`;
+  const guardOwner = {
+    pid: process.pid,
+    token: randomUUID3(),
+    runnerId,
+    startedAt: Date.now(),
+    processIdentity: identity
+  };
+  acquireRecoveryGuard(guard, guardOwner, deps);
+  try {
+    const owner = inspectOwner(path);
+    refuseLiveOrUnverifiableOwner(owner, deps);
+    if (owner.state === "absent") return;
+    const quarantine = `${path}.stale-${process.pid}-${randomUUID3()}`;
+    try {
+      renameSync2(path, quarantine);
+      rmSync2(quarantine, { recursive: true, force: true });
+    } catch (error2) {
+      if (error2.code !== "ENOENT") throw error2;
+    }
+  } finally {
+    const inspection = inspectOwner(guard);
+    if (inspection.state === "valid" && inspection.owner.token === guardOwner.token) {
+      rmSync2(guard, { recursive: true, force: true });
+    }
+  }
+}
+function acquireRecoveryGuard(path, owner, deps) {
+  if (tryCreate(path, owner)) return;
+  const current = inspectOwner(path);
+  refuseLiveOrUnverifiableOwner(current, deps);
+  const quarantine = `${path}.stale-${process.pid}-${randomUUID3()}`;
+  try {
+    renameSync2(path, quarantine);
+    rmSync2(quarantine, { recursive: true, force: true });
+  } catch (error2) {
+    if (error2.code !== "ENOENT") throw error2;
+  }
+  if (tryCreate(path, owner)) return;
+  const winner = inspectOwner(path);
+  if (winner.state === "invalid") throw invalidLockFault("recovery guard", winner.detail);
+  throw new RunnerFault("RUNNER_ALREADY_ACTIVE", "another process won runner-lock recovery", {
+    impact: "This process did not start polling or claim work.",
+    recovery: winner.state === "valid" && isLockOwnerLive(winner.owner, deps) ? "Run `engager-agent status`; retry after the existing process exits." : "Retry once; a concurrent stale-guard cleanup is still completing.",
+    retryable: true
+  });
+}
+function inspectOwner(path) {
+  let lockStat;
+  try {
+    lockStat = lstatSync3(path);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return { state: "absent" };
+    return { state: "invalid", detail: "lock path could not be inspected" };
+  }
+  if (!lockStat.isDirectory() || lockStat.isSymbolicLink()) {
+    return { state: "invalid", detail: "lock path is not a real directory" };
+  }
+  try {
+    const ownerPath = join5(path, "owner.json");
+    const ownerStat = lstatSync3(ownerPath);
+    if (!ownerStat.isFile() || ownerStat.isSymbolicLink()) {
+      return { state: "invalid", detail: "owner metadata is not a regular file" };
+    }
+    const value = JSON.parse(readFileSync4(join5(path, "owner.json"), "utf8"));
+    if (!Number.isSafeInteger(value.pid) || Number(value.pid) <= 0 || typeof value.token !== "string" || value.token.length < 1 || typeof value.runnerId !== "string" || value.runnerId.length < 1 || !Number.isSafeInteger(value.startedAt) || Number(value.startedAt) < 0 || typeof value.processIdentity !== "string" || value.processIdentity.length < 1) {
+      return { state: "invalid", detail: "owner metadata failed structural validation" };
+    }
+    return { state: "valid", owner: value };
+  } catch (error2) {
+    return {
+      state: "invalid",
+      detail: error2.code === "ENOENT" ? "owner metadata is missing" : "owner metadata is unreadable or malformed"
+    };
+  }
+}
+function inspectRunnerLock(runnerId) {
+  return inspectOwner(runnerLockPath(runnerId));
+}
+function inspectMaintenanceLock() {
+  return inspectOwner(maintenanceLockPath());
+}
+function diagnoseLock(inspection, deps = REAL_IDENTITY_DEPS) {
+  if (inspection.state === "absent") {
+    return { state: "absent", detail: "lock is absent" };
+  }
+  if (inspection.state === "invalid") {
+    return { state: "invalid", detail: inspection.detail };
+  }
+  const { owner } = inspection;
+  if (!deps.alive(owner.pid)) {
+    return { state: "stale", pid: owner.pid, detail: "verified metadata belongs to an exited process" };
+  }
+  if (!owner.processIdentity) {
+    return { state: "invalid", pid: owner.pid, detail: "live owner lacks verifiable process identity" };
+  }
+  const current = deps.identity(owner.pid);
+  if (current == null) {
+    return { state: "invalid", pid: owner.pid, detail: "live owner identity lookup failed" };
+  }
+  return current === owner.processIdentity ? { state: "active", pid: owner.pid, detail: "verified live owner" } : { state: "stale", pid: owner.pid, detail: "stored owner identity no longer matches this pid" };
+}
+function isLockOwnerLive(owner, deps = REAL_IDENTITY_DEPS) {
+  if (!owner.processIdentity || !deps.alive(owner.pid)) return false;
+  const current = deps.identity(owner.pid);
+  return current != null && current === owner.processIdentity;
+}
+function processIdentity(pid) {
+  const executable = TRUSTED_PROCESS_IDENTITY_EXECUTABLES.find(existsSync4);
+  if (!executable) return null;
+  const result = spawnSync(executable, processIdentityArgs(pid), {
+    encoding: "utf8",
+    timeout: 2e3,
+    env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" }
+  });
+  const identity = result.status === 0 ? result.stdout.trim() : "";
+  return identity ? `${executable}
+${identity}` : null;
+}
+function processIdentityArgs(pid) {
+  return ["-p", String(pid), "-o", "lstart=", "-o", "command="];
+}
+function refuseLiveOrUnverifiableOwner(inspection, deps) {
+  if (inspection.state === "invalid") throw invalidLockFault("lock", inspection.detail);
+  if (inspection.state === "absent") return;
+  const owner = inspection.owner;
+  if (!deps.alive(owner.pid)) return;
+  if (!owner.processIdentity) {
+    throw processIdentityFault(`lock owner pid ${owner.pid} is live but has no verifiable process identity`);
+  }
+  const current = deps.identity(owner.pid);
+  if (current == null) {
+    throw processIdentityFault(`lock owner pid ${owner.pid} is live but its current identity lookup failed`);
+  }
+  if (current === owner.processIdentity) throw alreadyActive(owner);
+}
+function invalidLockFault(kind, detail) {
+  return new RunnerFault(
+    "RUNNER_ALREADY_ACTIVE",
+    `${kind} ownership metadata is unsafe: ${detail}`,
+    {
+      impact: "The runner preserved the lock and refused to recover, signal, or overlap its unknown owner.",
+      recovery: "Run `engager-agent doctor`; repair ~/.engager/locks ownership and metadata only after proving no process owns the lock."
+    }
+  );
+}
+function processIdentityFault(message) {
+  return new RunnerFault("RUNNER_ALREADY_ACTIVE", message, {
+    impact: "The runner refused to recover, signal, or overlap an ambiguously owned local lock.",
+    recovery: "Run `engager-agent doctor`; verify the system ps utility and remove a stale lock only after confirming its process is gone."
+  });
+}
+function alreadyActive(owner) {
+  return new RunnerFault(
+    "RUNNER_ALREADY_ACTIVE",
+    `runner process ${owner.pid || "unknown"} already owns this local identity`,
+    {
+      impact: "The second process did not poll, claim, or execute work.",
+      recovery: "Use `engager-agent status` or stop the existing process with `engager-agent stop`."
+    }
+  );
+}
+
+// src/markers.ts
+import { randomUUID as randomUUID4 } from "node:crypto";
+import { existsSync as existsSync5, readFileSync as readFileSync5, rmSync as rmSync3 } from "node:fs";
+import { join as join6 } from "node:path";
+function haltPath() {
+  return join6(agentHome(), "halted.json");
+}
+function pausePath() {
+  return join6(agentHome(), "paused.json");
+}
+function readJson(path) {
+  if (!existsSync5(path)) return null;
+  try {
+    return JSON.parse(readFileSync5(path, "utf8"));
+  } catch {
+    return CORRUPT;
+  }
+}
+var CORRUPT = Symbol("corrupt-control-marker");
+function writeJson(path, value) {
+  writePrivateJsonDurably(path, value);
+}
+function writeHalt(reason, consecutiveFailures) {
+  writeJson(haltPath(), {
+    at: Date.now(),
+    reason,
+    ...consecutiveFailures != null ? { consecutiveFailures } : {}
+  });
+}
+function readHalt() {
+  const value = readJson(haltPath());
+  if (isHaltMarker(value)) return value;
+  return value == null ? null : { at: 0, reason: "halt marker is corrupt; explicit resume required" };
+}
+function clearHalt() {
+  rmSync3(haltPath(), { force: true });
+}
+function writePause(until) {
+  writeJson(pausePath(), {
+    id: randomUUID4(),
+    at: Date.now(),
+    ...until != null ? { until } : {}
+  });
+}
+function readPause(now = Date.now()) {
+  const value = readJson(pausePath());
+  if (value == null) return null;
+  if (!isPauseMarker(value)) return { at: 0 };
+  const m2 = value;
+  if (m2.until != null && m2.until <= now) {
+    return null;
+  }
+  return m2;
+}
+function isRecord(value) {
+  return typeof value === "object" && value != null && !Array.isArray(value);
+}
+function isHaltMarker(value) {
+  return isRecord(value) && Number.isSafeInteger(value.at) && Number(value.at) >= 0 && typeof value.reason === "string" && value.reason.length > 0 && value.reason.length <= 1e3 && (value.consecutiveFailures === void 0 || Number.isSafeInteger(value.consecutiveFailures) && Number(value.consecutiveFailures) >= 0);
+}
+function isPauseMarker(value) {
+  return isRecord(value) && Number.isSafeInteger(value.at) && Number(value.at) >= 0 && (value.id === void 0 || typeof value.id === "string" && value.id.length > 0 && value.id.length <= 200) && (value.until === void 0 || Number.isSafeInteger(value.until) && Number(value.until) >= 0);
+}
+function clearPause() {
+  rmSync3(pausePath(), { force: true });
+}
+
+// src/service.ts
+import { createHash as createHash2, randomUUID as randomUUID5 } from "node:crypto";
+import { spawnSync as spawnSync2 } from "node:child_process";
+import {
+  chmodSync as chmodSync5,
+  copyFileSync,
+  existsSync as existsSync6,
+  lstatSync as lstatSync4,
+  mkdirSync as mkdirSync5,
+  mkdtempSync,
+  readFileSync as readFileSync6,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+  renameSync as renameSync3,
+  rmSync as rmSync4,
+  symlinkSync,
+  writeFileSync as writeFileSync3
+} from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { basename, dirname as dirname2, isAbsolute as isAbsolute2, join as join7, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// src/version.ts
+var AGENT_VERSION = true ? "0.9.0" : "0.9.0";
+
+// src/service.ts
+var SERVICE_LABEL = "com.engager.agent";
+var LAUNCHCTL_PATH = "/bin/launchctl";
+var PLUTIL_PATH = "/usr/bin/plutil";
+var LAUNCHCTL_TIMEOUT_MS = 1e4;
+var PLUTIL_TIMEOUT_MS = 5e3;
+function plistPath() {
+  const root = process.env.ENGAGER_LAUNCH_AGENTS_DIR ?? join7(homedir2(), "Library", "LaunchAgents");
+  return join7(root, `${SERVICE_LABEL}.plist`);
+}
+function runtimeRoot() {
+  return join7(agentHome(), "runtime");
+}
+function serviceEntryPath() {
+  return join7(runtimeRoot(), "current", "cli.mjs");
+}
+var xmlEscape = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function renderPlist(options) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${SERVICE_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xmlEscape(options.nodePath)}</string>
+    <string>${xmlEscape(options.scriptPath)}</string>
+    <string>run</string>
+    <string>--service</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>${xmlEscape(options.pathEnv)}</string>
+${options.maintenanceToken ? `    <key>${MAINTENANCE_TOKEN_ENV}</key>
+    <string>${xmlEscape(options.maintenanceToken)}</string>
+` : ""}  </dict>
+  <key>Umask</key>
+  <integer>63</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(options.logPath)}</string>
+  <key>StandardErrPath</key>
+  <string>${xmlEscape(options.logPath)}</string>
+</dict>
+</plist>
+`;
+}
+function stableBrewPath(path, resolve = (value) => value) {
+  const match = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/(.+)$/.exec(path);
+  if (!match) return path;
+  const candidate = `${match[1]}/opt/${match[2]}/${match[3]}`;
+  try {
+    if (resolve(candidate) === resolve(path)) return candidate;
+  } catch {
+  }
+  return candidate;
+}
+function isVolatileRuntimePath(path) {
+  return /(?:^|\/)(?:_npx|\.hermes|Caches?|tmp|\.cache)(?:\/|$)|\/(?:\.nvm\/versions|\.asdf\/installs|\.local\/share\/mise\/installs)\//i.test(
+    path
+  );
+}
+function resolveDurableNode() {
+  const which = spawnSync2("/usr/bin/which", ["node"], { encoding: "utf8", timeout: 5e3 });
+  const candidates = [
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+    which.status === 0 ? which.stdout.trim() : "",
+    process.execPath
+  ].filter(Boolean);
+  for (const raw of [...new Set(candidates)]) {
+    const candidate = stableBrewPath(raw);
+    if (isVolatileRuntimePath(candidate) || !existsSync6(candidate)) continue;
+    let resolved;
+    try {
+      resolved = realpathSync(candidate);
+    } catch {
+      continue;
+    }
+    if (isVolatileRuntimePath(resolved)) continue;
+    const version2 = spawnSync2(candidate, ["--version"], { encoding: "utf8", timeout: 5e3 });
+    const major = Number(/^v?(\d+)/.exec((version2.stdout || version2.stderr).trim())?.[1]);
+    if (version2.status === 0 && major >= 20) return candidate;
+  }
+  return null;
+}
+function resolveSourceBundle() {
+  const self = fileURLToPath(import.meta.url);
+  if (basename(self) === "engager-agent.mjs") return self;
+  return join7(dirname2(dirname2(self)), "bundle", "engager-agent.mjs");
+}
+function installDurablePayload(version2 = AGENT_VERSION, sourceBundle = resolveSourceBundle()) {
+  if (!existsSync6(sourceBundle)) {
+    throw new Error(`SERVICE_ENTRY_MISSING: built runner bundle not found at ${sourceBundle}`);
+  }
+  const bytes = readFileSync6(sourceBundle);
+  const sourceDirectory = dirname2(sourceBundle);
+  const watchdogSource = join7(sourceDirectory, "engine-watchdog.mjs");
+  if (!existsSync6(watchdogSource)) {
+    throw new Error("SERVICE_ENTRY_MISSING: audited engine watchdog is missing");
+  }
+  const watchdogBytes = readFileSync6(watchdogSource);
+  const assetCandidates = [sourceDirectory, dirname2(sourceDirectory)];
+  const assets = ["LICENSE", "THIRD_PARTY_NOTICES", "THIRD_PARTY_COMPONENTS.json"].map((name2) => {
+    const source = assetCandidates.map((directory) => join7(directory, name2)).find(existsSync6);
+    if (!source) throw new Error(`SERVICE_ENTRY_MISSING: audited payload asset ${name2} is missing`);
+    return { name: name2, source };
+  });
+  const manifestSources = [
+    { name: "cli.mjs", bytes, mode: 320 },
+    { name: "engine-watchdog.mjs", bytes: watchdogBytes, mode: 320 },
+    ...assets.map((asset) => ({
+      name: asset.name,
+      bytes: readFileSync6(asset.source),
+      mode: 256
+    }))
+  ];
+  const sha2562 = payloadManifestDigest(manifestSources);
+  const home = agentHome();
+  mkdirSync5(home, { recursive: true, mode: 448 });
+  chmodSync5(home, 448);
+  const runtime = runtimeRoot();
+  ensureOwnedPrivateDirectory(runtime, "runtime root");
+  syncDirectoryDurably(home);
+  const versions = join7(runtime, "versions");
+  ensureOwnedPrivateDirectory(versions, "runtime versions root");
+  syncDirectoryDurably(runtime);
+  const name = `${version2}-${sha2562.slice(0, 16)}`;
+  const target = join7(versions, name);
+  if (!existsSync6(target)) {
+    const staging = mkdtempSync(join7(versions, ".staging-"));
+    const stagedEntry = join7(staging, "cli.mjs");
+    const stagedWatchdog = join7(staging, "engine-watchdog.mjs");
+    copyFileSync(sourceBundle, stagedEntry);
+    copyFileSync(watchdogSource, stagedWatchdog);
+    chmodSync5(stagedEntry, 320);
+    chmodSync5(stagedWatchdog, 320);
+    for (const asset of assets) {
+      const targetAsset = join7(staging, asset.name);
+      copyFileSync(asset.source, targetAsset);
+      chmodSync5(targetAsset, 256);
+    }
+    const copied = payloadManifestDigest(
+      manifestSources.map((file) => ({
+        name: file.name,
+        bytes: readFileSync6(join7(staging, file.name)),
+        mode: lstatSync4(join7(staging, file.name)).mode & 511
+      }))
+    );
+    if (copied !== sha2562) {
+      rmSync4(staging, { recursive: true, force: true });
+      throw new Error("SERVICE_ENTRY_MISSING: copied runner bundle failed SHA-256 verification");
+    }
+    for (const file of manifestSources) syncFileDurably(join7(staging, file.name));
+    syncDirectoryDurably(staging);
+    renamePathDurably(staging, target);
+  }
+  verifyDurablePayload(target, sha2562, manifestSources);
+  return {
+    version: version2,
+    sha256: sha2562,
+    versionDir: target,
+    versionEntryPath: join7(target, "cli.mjs")
+  };
+}
+function activateDurablePayload(payload) {
+  const current = join7(runtimeRoot(), "current");
+  const previous = join7(runtimeRoot(), "previous");
+  assertManagedRuntimeLink(current);
+  assertManagedRuntimeLink(previous);
+  const snapshot = {
+    currentTarget: readSymlink(current),
+    previousTarget: readSymlink(previous)
+  };
+  const target = relative(runtimeRoot(), payload.versionDir);
+  if (!target || target === ".." || target.startsWith(`..${sep}`) || isAbsolute2(target)) {
+    throw new Error("SERVICE_ENTRY_MISSING: durable payload is outside the managed runtime root");
+  }
+  if (snapshot.currentTarget === target) return snapshot;
+  try {
+    if (snapshot.currentTarget) atomicSymlink(previous, snapshot.currentTarget);
+    else if (pathExists(previous)) removePathDurably(previous);
+    atomicSymlink(current, target);
+  } catch (error2) {
+    try {
+      restoreDurableActivation(snapshot);
+    } catch (restoreError) {
+      throw new Error(
+        `durable payload activation failed and rollback also failed: ${String(error2)}; rollback: ${String(restoreError)}`
+      );
+    }
+    throw error2;
+  }
+  return snapshot;
+}
+function restoreDurableActivation(snapshot) {
+  restoreSymlink(join7(runtimeRoot(), "current"), snapshot.currentTarget);
+  restoreSymlink(join7(runtimeRoot(), "previous"), snapshot.previousTarget);
+}
+function smokeDurablePayload(payload, version2, nodePath = resolveDurableNode()) {
+  if (!nodePath) {
+    return {
+      ok: false,
+      note: "SERVICE_ENTRY_MISSING: no durable Node 20+ runtime found (temporary, npx, nvm/asdf/mise, and Codex-owned runtimes are refused)"
+    };
+  }
+  const smoke = spawnSync2(nodePath, [payload.versionEntryPath, "--version"], {
+    encoding: "utf8",
+    timeout: 1e4
+  });
+  return smoke.status === 0 && smoke.stdout.trim() === version2 ? { ok: true, note: `verified payload ${version2}-${payload.sha256.slice(0, 12)}` } : {
+    ok: false,
+    note: "SERVICE_ENTRY_MISSING: durable runner bundle failed its version smoke test"
+  };
+}
+function activateStandaloneDurablePayload(payload, version2) {
+  try {
+    const pending = readUpgradeTransition();
+    if (pending) {
+      return {
+        ok: false,
+        note: `UPGRADE_RECOVERY_REQUIRED: interrupted transition remains at ${pending.phase}`
+      };
+    }
+    const current = snapshotRuntimeLink(join7(runtimeRoot(), "current"));
+    const previous = snapshotRuntimeLink(join7(runtimeRoot(), "previous"));
+    const linkTarget = relative(runtimeRoot(), payload.versionDir);
+    let transition = writeUpgradeTransition({
+      schemaVersion: 1,
+      phase: "prepared",
+      createdAt: Date.now(),
+      prior: {
+        installed: false,
+        loaded: false,
+        disabled: false,
+        current,
+        previous,
+        plist: fileSnapshot(null)
+      },
+      target: {
+        installed: false,
+        disabled: false,
+        version: version2,
+        payloadSha256: payload.sha256,
+        linkTarget,
+        previous: current.target === linkTarget ? previous : current,
+        plist: fileSnapshot(null)
+      }
+    });
+    activateDurablePayload(payload);
+    transition = advanceUpgradeTransition(transition, "payload_activated");
+    verifyTransitionTarget(transition, false);
+    clearUpgradeTransition();
+    return {
+      ok: true,
+      note: `activated verified standalone payload ${version2}-${payload.sha256.slice(0, 12)}`
+    };
+  } catch (error2) {
+    return {
+      ok: false,
+      note: `UPGRADE_RECOVERY_REQUIRED: standalone activation was interrupted: ${error2 instanceof Error ? error2.message : String(error2)}`
+    };
+  }
+}
+var uid = () => process.getuid?.() ?? 501;
+var domainTarget = () => `gui/${uid()}`;
+var serviceTarget = () => `${domainTarget()}/${SERVICE_LABEL}`;
+function launchctl(...args) {
+  return runBoundedServiceCommand(LAUNCHCTL_PATH, args, LAUNCHCTL_TIMEOUT_MS);
+}
+function plutilLint(path) {
+  return runBoundedServiceCommand(PLUTIL_PATH, ["-lint", path], PLUTIL_TIMEOUT_MS);
+}
+function runBoundedServiceCommand(executable, args, timeoutMs, spawn3 = spawnSync2) {
+  const result = spawn3(executable, args, {
+    encoding: "utf8",
+    timeout: timeoutMs
+  });
+  const timeout = result.error && result.error.code === "ETIMEDOUT";
+  return {
+    status: result.status,
+    out: timeout ? `${executable} timed out after ${timeoutMs}ms` : `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? String(result.error.message) : ""}`
+  };
+}
+function serviceState() {
+  const installed = existsSync6(plistPath());
+  const entryExists = existsSync6(serviceEntryPath());
+  if (process.platform !== "darwin") {
+    return { supported: false, installed, entryExists, loaded: false };
+  }
+  const result = launchctl("print", serviceTarget());
+  if (result.status !== 0) return { supported: true, installed, entryExists, loaded: false };
+  const pid = /\bpid\s*=\s*(\d+)/.exec(result.out)?.[1];
+  const numericPid = pid ? Number(pid) : void 0;
+  return {
+    supported: true,
+    installed,
+    entryExists,
+    loaded: numericPid != null && pidAlive(numericPid),
+    ...numericPid != null ? { pid: numericPid } : {}
+  };
+}
+function serviceDisabledState() {
+  if (process.platform !== "darwin") return null;
+  const result = launchctl("print-disabled", domainTarget());
+  if (result.status !== 0) return null;
+  const escaped = SERVICE_LABEL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`"?${escaped}"?\\s*=>\\s*(true|false)`, "i").exec(result.out);
+  return match ? match[1].toLowerCase() === "true" : false;
+}
+function beginServiceTransitionAfterQuiesce(transition, deps) {
+  const stopped = deps.stop();
+  const tolerated = /could not find service|no such process/i.test(stopped.out);
+  if (stopped.status !== 0 && !tolerated) {
+    throw new Error(`launchctl maintenance stop failed: ${stopped.out.trim().slice(0, 300)}`);
+  }
+  deps.onQuiesced();
+  const barrier = deps.acquireBarrier();
+  try {
+    return {
+      transition: deps.persist(transition),
+      barrier
+    };
+  } catch (error2) {
+    barrier.release();
+    throw error2;
+  }
+}
+function installService(version2 = AGENT_VERSION, options = {}) {
+  if (process.platform !== "darwin") {
+    return { ok: false, note: "native background service is macOS-only; use `engager-agent run`" };
+  }
+  if (!options.maintenanceToken || !options.afterServiceStopped || !options.beforeRollbackServiceStart) {
+    return {
+      ok: false,
+      note: "UPGRADE_BLOCKED: service installation requires the maintenance orchestrator and execution-lock handoff"
+    };
+  }
+  const nodePath = resolveDurableNode();
+  if (!nodePath) {
+    return {
+      ok: false,
+      note: "SERVICE_ENTRY_MISSING: no durable Node 20+ runtime found (temporary, npx, nvm/asdf/mise, and Codex-owned runtimes are refused)"
+    };
+  }
+  const config2 = loadConfig();
+  if (!config2) {
+    return {
+      ok: false,
+      note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` before installing the background service"
+    };
+  }
+  let payload;
+  try {
+    payload = installDurablePayload(version2);
+  } catch (error2) {
+    return { ok: false, note: error2 instanceof Error ? error2.message : String(error2) };
+  }
+  const smoke = smokeDurablePayload(payload, version2, nodePath);
+  if (!smoke.ok) return smoke;
+  const logDir = join7(agentHome(), "logs");
+  mkdirSync5(logDir, { recursive: true, mode: 448 });
+  chmodSync5(logDir, 448);
+  mkdirSync5(dirname2(plistPath()), { recursive: true });
+  const plistOptions = {
+    nodePath,
+    scriptPath: serviceEntryPath(),
+    logPath: join7(logDir, "service.log"),
+    pathEnv: trustedServicePath(nodePath, config2.enginePath)
+  };
+  const cleanPlist = renderPlist(plistOptions);
+  const plist = renderPlist({
+    ...plistOptions,
+    ...options.maintenanceToken && !options.leaveStopped ? { maintenanceToken: options.maintenanceToken } : {}
+  });
+  const path = plistPath();
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync3(tmp, plist, { mode: 384 });
+  const lint = plutilLint(tmp);
+  if (lint.status !== 0) {
+    rmSync4(tmp, { force: true });
+    return { ok: false, note: `SERVICE_ENTRY_MISSING: invalid launchd plist: ${lint.out.trim()}` };
+  }
+  rmSync4(tmp, { force: true });
+  const storedPriorPlist = existsSync6(path) ? readFileSync6(path) : null;
+  const priorPlist = storedPriorPlist ? plistWithoutMaintenanceToken(storedPriorPlist) : null;
+  if (storedPriorPlist && priorPlist && !storedPriorPlist.equals(priorPlist)) {
+    restorePlist(path, priorPlist);
+  }
+  let transition;
+  try {
+    const pending = readUpgradeTransition();
+    if (pending) {
+      return {
+        ok: false,
+        note: `UPGRADE_RECOVERY_REQUIRED: interrupted ${pending.target.version} transition is at ${pending.phase}; reconcile it before service repair`
+      };
+    }
+    const current = snapshotRuntimeLink(join7(runtimeRoot(), "current"));
+    const previous = snapshotRuntimeLink(join7(runtimeRoot(), "previous"));
+    const linkTarget = relative(runtimeRoot(), payload.versionDir);
+    const observedState = serviceState();
+    const priorDisabled = options.priorDisabled ?? serviceDisabledState();
+    if (priorDisabled == null) {
+      throw new Error("launchd enabled/disabled intent could not be determined");
+    }
+    const priorLoaded = options.priorLoaded ?? observedState.loaded;
+    const targetDisabled = options.targetDisabled ?? priorDisabled;
+    const leaveStopped = options.leaveStopped ?? targetDisabled;
+    if (leaveStopped !== targetDisabled) {
+      throw new Error("service stop intent does not match target launchd disabled state");
+    }
+    transition = prepareUpgradeTransition({
+      schemaVersion: 1,
+      phase: "service_stopped",
+      createdAt: Date.now(),
+      prior: {
+        installed: priorPlist != null,
+        loaded: priorLoaded,
+        disabled: priorDisabled,
+        current,
+        previous,
+        plist: fileSnapshot(priorPlist)
+      },
+      target: {
+        installed: true,
+        disabled: targetDisabled,
+        version: version2,
+        payloadSha256: payload.sha256,
+        linkTarget,
+        previous: current.target === linkTarget ? previous : current,
+        plist: fileSnapshot(Buffer.from(cleanPlist))
+      }
+    });
+  } catch (error2) {
+    rmSync4(tmp, { force: true });
+    return {
+      ok: false,
+      note: `UPGRADE_RECOVERY_REQUIRED: could not prepare a safe service transition: ${error2 instanceof Error ? error2.message : String(error2)}`
+    };
+  }
+  let transitionLock = null;
+  let serviceQuiesced = false;
+  let transitionPersisted = false;
+  try {
+    const begun = beginServiceTransitionAfterQuiesce(transition, {
+      stop: () => launchctl("bootout", serviceTarget()),
+      onQuiesced: () => {
+        serviceQuiesced = true;
+      },
+      acquireBarrier: options.afterServiceStopped,
+      persist: writeUpgradeTransition
+    });
+    transition = begun.transition;
+    transitionLock = begun.barrier;
+    transitionPersisted = true;
+    activateDurablePayload(payload);
+    transition = advanceUpgradeTransition(transition, "payload_activated");
+    writeFileSync3(tmp, transition.target.disabled ? cleanPlist : plist, {
+      mode: 384
+    });
+    const targetLint = plutilLint(tmp);
+    if (targetLint.status !== 0) {
+      throw new Error(`target service plist failed lint: ${targetLint.out.trim()}`);
+    }
+    commitVerifiedFileDurably(tmp, path, 384);
+    transition = advanceUpgradeTransition(transition, "plist_installed");
+    if (transition.target.disabled) {
+      const disabled = launchctl("disable", serviceTarget());
+      if (disabled.status !== 0) {
+        throw new Error(`launchctl disable failed: ${disabled.out.trim().slice(0, 300)}`);
+      }
+      transitionLock?.release();
+      transitionLock = null;
+      verifyTransitionTarget(transition, false);
+      clearUpgradeTransition();
+      return {
+        ok: true,
+        note: `repaired stopped ${SERVICE_LABEL} with verified payload ${version2}-${payload.sha256.slice(0, 12)}`
+      };
+    }
+    const launchedAt = Date.now();
+    const enabled = launchctl("enable", serviceTarget());
+    if (enabled.status !== 0) throw new Error(`launchctl enable failed: ${enabled.out.trim().slice(0, 300)}`);
+    transitionLock?.release();
+    transitionLock = null;
+    const boot = launchctl("bootstrap", domainTarget(), path);
+    if (boot.status !== 0) {
+      const legacy = launchctl("load", "-w", path);
+      if (legacy.status !== 0) {
+        throw new Error(`launchctl failed: ${boot.out.trim().slice(0, 300)}`);
+      }
+    }
+    transition = advanceUpgradeTransition(transition, "service_bootstrapped");
+    const verification = waitForServiceLoad({
+      notBefore: launchedAt,
+      expectedVersion: version2
+    });
+    if (!verification.ok) {
+      throw new Error(`launchd startup verification failed: ${verification.reason}`);
+    }
+    if (options.maintenanceToken) {
+      writeFileSync3(tmp, cleanPlist, { mode: 384 });
+      const cleanLint = plutilLint(tmp);
+      if (cleanLint.status !== 0) {
+        throw new Error(`launchd maintenance-token scrub failed: ${cleanLint.out.trim()}`);
+      }
+      commitVerifiedFileDurably(tmp, path, 384);
+    }
+    verifyTransitionTarget(transition, true);
+    clearUpgradeTransition();
+    return {
+      ok: true,
+      note: `installed ${SERVICE_LABEL} from verified payload ${version2}-${payload.sha256.slice(0, 12)}`
+    };
+  } catch (error2) {
+    transitionLock?.release();
+    transitionLock = null;
+    if (!transitionPersisted) {
+      const restart = serviceQuiesced ? restartUntouchedPriorService(
+        transition,
+        options.maintenanceToken,
+        options.beforeRollbackServiceStart
+      ) : {
+        ok: false,
+        note: "the service stop was not verified, so no restart was attempted"
+      };
+      return {
+        ok: false,
+        note: `SERVICE_ENTRY_MISSING: service install stopped before transition commit: ${error2 instanceof Error ? error2.message : String(error2)}; ` + restart.note
+      };
+    }
+    const recovery = reconcileServiceUpgradeTransition({
+      maintenanceToken: options.maintenanceToken,
+      acquireBarrier: options.beforeRollbackServiceStart
+    });
+    return {
+      ok: false,
+      note: `SERVICE_ENTRY_MISSING: service install failed: ${error2 instanceof Error ? error2.message : String(error2)}; ` + (recovery.ok ? recovery.note : recovery.recovered ? `the prior runtime was durably restored but remains stopped: ${recovery.note}` : `durable recovery remains pending: ${recovery.note}`)
+    };
+  } finally {
+    transitionLock?.release();
+    rmSync4(tmp, { force: true });
+  }
+}
+function restartUntouchedPriorService(transition, maintenanceToken, acquireBarrier) {
+  if (!transition.prior.installed) {
+    return {
+      ok: true,
+      note: "no prior service existed; the staged target was never activated and no files changed"
+    };
+  }
+  if (transition.prior.disabled) {
+    try {
+      verifyTransitionPrior(transition, false, true);
+      return {
+        ok: true,
+        note: "the exact prior disabled service remained stopped and unchanged"
+      };
+    } catch (error2) {
+      return {
+        ok: false,
+        note: `the prior disabled service could not be re-verified: ${error2 instanceof Error ? error2.message : String(error2)}`
+      };
+    }
+  }
+  const priorPlist = fileSnapshotContents(transition.prior.plist);
+  const path = plistPath();
+  const tmp = `${path}.${process.pid}.pretransition-restart`;
+  let barrier = null;
+  let bootstrapAttempted = false;
+  try {
+    if (!priorPlist || !transition.prior.current.target) {
+      throw new Error("enabled prior service has no restorable plist or payload");
+    }
+    barrier = acquireBarrier();
+    verifyTransitionPrior(transition, false, true);
+    const smoke = smokeRecordedPayload(transition.prior.current);
+    if (!smoke.ok) throw new Error(`prior payload smoke test failed: ${smoke.note}`);
+    writeFileSync3(
+      tmp,
+      plistWithMaintenanceToken(priorPlist, maintenanceToken),
+      { mode: 384 }
+    );
+    const lint = plutilLint(tmp);
+    if (lint.status !== 0) {
+      throw new Error(`prior restart plist failed lint: ${lint.out.trim()}`);
+    }
+    commitVerifiedFileDurably(tmp, path, 384);
+    const enabled = launchctl("enable", serviceTarget());
+    if (enabled.status !== 0) {
+      throw new Error(`prior service enable failed: ${enabled.out.trim().slice(0, 300)}`);
+    }
+    const startedAt = Date.now();
+    barrier.release();
+    barrier = null;
+    bootstrapAttempted = true;
+    const boot = launchctl("bootstrap", domainTarget(), path);
+    if (boot.status !== 0) {
+      throw new Error(`prior service bootstrap failed: ${boot.out.trim().slice(0, 300)}`);
+    }
+    const verification = waitForServiceLoad({ notBefore: startedAt });
+    restorePlist(path, priorPlist);
+    if (!verification.ok) {
+      throw new Error(`prior service verification failed: ${verification.reason}`);
+    }
+    verifyTransitionPrior(transition, true, true);
+    return {
+      ok: true,
+      note: "the untouched prior service was restarted and re-verified"
+    };
+  } catch (error2) {
+    if (bootstrapAttempted) launchctl("bootout", serviceTarget());
+    let exactStopped = false;
+    let cleanupBarrier = null;
+    try {
+      cleanupBarrier = acquireBarrier();
+      restorePlist(path, priorPlist);
+      verifyTransitionPrior(transition, false, true);
+      exactStopped = true;
+    } catch {
+      try {
+        writeUpgradeTransition(transition);
+      } catch {
+      }
+    } finally {
+      cleanupBarrier?.release();
+    }
+    return {
+      ok: false,
+      note: `the untouched prior service could not be restarted: ${error2 instanceof Error ? error2.message : String(error2)}` + (exactStopped ? "; its exact files and intent remain safely stopped for `engager-agent start`" : "; exact cleanup could not be proven, so durable recovery is required")
+    };
+  } finally {
+    barrier?.release();
+    rmSync4(tmp, { force: true });
+  }
+}
+var REAL_TRANSITION_RUNTIME = {
+  platform: process.platform,
+  launch: launchctl,
+  lint: plutilLint,
+  state: serviceState,
+  disabled: serviceDisabledState,
+  wait: waitForServiceLoad,
+  smoke: smokeRecordedPayload,
+  now: Date.now
+};
+function reconcileServiceUpgradeTransition(options = {}) {
+  const runtime = options.runtime ?? REAL_TRANSITION_RUNTIME;
+  let transition;
+  try {
+    transition = readUpgradeTransition();
+  } catch (error2) {
+    return {
+      ok: false,
+      recovered: false,
+      note: `upgrade transition journal is unsafe: ${error2 instanceof Error ? error2.message : String(error2)}`
+    };
+  }
+  if (!transition) {
+    return { ok: true, recovered: false, note: "no interrupted service transition" };
+  }
+  const touchesService = transition.prior.installed || transition.target.installed;
+  if (touchesService && runtime.platform !== "darwin") {
+    return {
+      ok: false,
+      recovered: false,
+      note: "an interrupted macOS service transition cannot be reconciled on this platform"
+    };
+  }
+  if (!options.maintenanceToken || !options.acquireBarrier) {
+    return {
+      ok: false,
+      recovered: false,
+      note: "recovery requires an exclusive maintenance and execution-lock handoff"
+    };
+  }
+  const path = plistPath();
+  const tmp = `${path}.${process.pid}.recovery`;
+  const restore = runtime.restorePlist ?? restorePlist;
+  let barrier = null;
+  let rollbackCommitted = false;
+  let priorBootstrapAttempted = false;
+  try {
+    verifyTransitionPayloadReferences(transition);
+    if (touchesService) {
+      const stopped = runtime.launch("bootout", serviceTarget());
+      const tolerated = /could not find service|no such process/i.test(stopped.out);
+      if (stopped.status !== 0 && !tolerated) {
+        throw new Error(`launchctl recovery stop failed: ${stopped.out.trim().slice(0, 300)}`);
+      }
+    }
+    barrier = options.acquireBarrier();
+    restoreDurableActivation({
+      currentTarget: transition.prior.current.target,
+      previousTarget: transition.prior.previous.target
+    });
+    const priorPlist = fileSnapshotContents(transition.prior.plist);
+    restore(path, priorPlist);
+    verifyTransitionPrior(transition, false, false, runtime);
+    if (transition.prior.installed && !transition.prior.disabled) {
+      if (!priorPlist || !transition.prior.current.target) {
+        throw new Error("recorded loaded service has no restorable plist or current payload");
+      }
+      const smoke = runtime.smoke(transition.prior.current);
+      if (!smoke.ok) throw new Error(`restored payload smoke test failed: ${smoke.note}`);
+      const enabled = runtime.launch("enable", serviceTarget());
+      if (enabled.status !== 0) {
+        throw new Error(`launchctl recovery enable failed: ${enabled.out.trim().slice(0, 300)}`);
+      }
+      verifyTransitionPrior(transition, false, true, runtime);
+      writeFileSync3(
+        tmp,
+        plistWithMaintenanceToken(priorPlist, options.maintenanceToken),
+        { mode: 384 }
+      );
+      const lint = runtime.lint(tmp);
+      if (lint.status !== 0) {
+        throw new Error(`recovery plist failed lint: ${lint.out.trim()}`);
+      }
+      commitVerifiedFileDurably(tmp, path, 384);
+      const startedAt = runtime.now();
+      barrier.release();
+      barrier = null;
+      priorBootstrapAttempted = true;
+      const boot = runtime.launch("bootstrap", domainTarget(), path);
+      if (boot.status !== 0) {
+        throw new Error(`launchctl recovery bootstrap failed: ${boot.out.trim().slice(0, 300)}`);
+      }
+      const verification = runtime.wait({ notBefore: startedAt });
+      restore(path, priorPlist);
+      if (!verification.ok) {
+        throw new Error(`restored service verification failed: ${verification.reason}`);
+      }
+      verifyTransitionPrior(transition, true, true, runtime);
+      clearUpgradeTransition();
+      rollbackCommitted = true;
+    } else {
+      if (touchesService) {
+        const intent = runtime.launch(
+          transition.prior.disabled ? "disable" : "enable",
+          serviceTarget()
+        );
+        if (intent.status !== 0) {
+          throw new Error(
+            `launchctl recovery ${transition.prior.disabled ? "disable" : "enable"} failed: ${intent.out.trim().slice(0, 300)}`
+          );
+        }
+      }
+      barrier.release();
+      barrier = null;
+      verifyTransitionPrior(transition, false, true, runtime);
+      clearUpgradeTransition();
+      rollbackCommitted = true;
+    }
+    return {
+      ok: true,
+      recovered: true,
+      note: `restored the verified pre-upgrade ${!transition.prior.installed ? "absent" : transition.prior.disabled ? "stopped" : "running"} service intent from interrupted phase ${transition.phase}`
+    };
+  } catch (error2) {
+    let cleanupNote = "";
+    if (priorBootstrapAttempted) {
+      const stopped = runtime.launch("bootout", serviceTarget());
+      const stopTolerated = stopped.status === 0 || /could not find service|no such process/i.test(stopped.out);
+      if (!stopTolerated) {
+        try {
+          writeUpgradeTransition(transition);
+          rollbackCommitted = false;
+          cleanupNote = `; stopping the unverified prior service failed (${stopped.out.trim().slice(0, 200)}), so the transition fence remains durable`;
+        } catch (fenceError) {
+          rollbackCommitted = false;
+          cleanupNote = `; CRITICAL: stopping the unverified prior service and preserving its transition fence both failed (${stopped.out.trim().slice(0, 160)}; ${fenceError instanceof Error ? fenceError.message : String(fenceError)})`;
+        }
+      } else {
+        try {
+          barrier = options.acquireBarrier();
+          const clean = fileSnapshotContents(transition.prior.plist);
+          restore(path, clean);
+          verifyTransitionPrior(transition, false, true, runtime);
+          barrier.release();
+          barrier = null;
+          rollbackCommitted = false;
+          cleanupNote = "; the unverified prior service was stopped, its exact clean snapshot re-verified, and the transition fence remains durable";
+        } catch (restoreError) {
+          barrier?.release();
+          barrier = null;
+          try {
+            writeUpgradeTransition(transition);
+            rollbackCommitted = false;
+            cleanupNote = `; the unverified prior service was stopped, but exact clean-snapshot verification failed and the transition fence was restored (${restoreError instanceof Error ? restoreError.message : String(restoreError)})`;
+          } catch (fenceError) {
+            rollbackCommitted = false;
+            cleanupNote = `; CRITICAL: the unverified prior service was stopped, but exact clean-snapshot verification and transition-fence restoration both failed (${restoreError instanceof Error ? restoreError.message : String(restoreError)}; ${fenceError instanceof Error ? fenceError.message : String(fenceError)})`;
+          }
+        }
+      }
+    }
+    return {
+      ok: false,
+      recovered: rollbackCommitted,
+      note: `${error2 instanceof Error ? error2.message : String(error2)}` + cleanupNote + (rollbackCommitted ? "; the exact prior activation and launchd intent remain committed with no unverified service running, so `engager-agent start` can retry safely" : "")
+    };
+  } finally {
+    barrier?.release();
+    rmSync4(tmp, { force: true });
+  }
+}
+var REAL_UNINSTALL_DEPS = {
+  platform: process.platform,
+  launch: launchctl,
+  plist: plistPath,
+  exists: pathExists,
+  remove: removePathDurably
+};
+function uninstallService(deps = REAL_UNINSTALL_DEPS) {
+  if (deps.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
+  const stopped = deps.launch("bootout", serviceTarget());
+  const tolerated = /could not find service|no such process/i.test(stopped.out);
+  if (stopped.status !== 0 && !tolerated) {
+    return { ok: false, note: `launchctl uninstall stop failed: ${stopped.out.trim().slice(0, 300)}` };
+  }
+  const disabled = deps.launch("disable", serviceTarget());
+  if (disabled.status !== 0) {
+    return { ok: false, note: `launchctl uninstall disable failed: ${disabled.out.trim().slice(0, 300)}` };
+  }
+  const path = deps.plist();
+  if (deps.exists(path)) deps.remove(path);
+  return { ok: true, note: `removed ${SERVICE_LABEL}; configuration and versioned runtime were preserved` };
+}
+function stopService() {
+  if (process.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
+  const bootout = launchctl("bootout", serviceTarget());
+  const disable = launchctl("disable", serviceTarget());
+  const tolerated = /could not find service|no such process/i.test(bootout.out);
+  return bootout.status === 0 || tolerated ? { ok: disable.status === 0, note: `${SERVICE_LABEL} stopped and disabled` } : { ok: false, note: `launchctl stop failed: ${bootout.out.trim().slice(0, 300)}` };
+}
+var REAL_START_SERVICE_DEPS = {
+  platform: process.platform,
+  exists: existsSync6,
+  now: Date.now,
+  launch: launchctl,
+  wait: waitForServiceLoad
+};
+function startService(deps = REAL_START_SERVICE_DEPS) {
+  if (deps.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
+  if (!deps.exists(plistPath()) || !deps.exists(serviceEntryPath())) {
+    return { ok: false, note: "SERVICE_ENTRY_MISSING: run `engager-agent service install --repair`" };
+  }
+  const launchedAt = deps.now();
+  const enabled = deps.launch("enable", serviceTarget());
+  if (enabled.status !== 0) {
+    return { ok: false, note: `launchctl enable failed: ${enabled.out.trim().slice(0, 300)}` };
+  }
+  const boot = deps.launch("bootstrap", domainTarget(), plistPath());
+  const launched = boot.status === 0 ? boot : deps.launch("kickstart", "-k", serviceTarget());
+  if (launched.status !== 0) {
+    return { ok: false, note: `launchctl start failed: ${launched.out.trim().slice(0, 300)}` };
+  }
+  const verification = deps.wait({ notBefore: launchedAt });
+  if (verification.ok) {
+    return {
+      ok: true,
+      note: `${SERVICE_LABEL} started with current server control and engine readiness verified`
+    };
+  }
+  const stopped = deps.launch("bootout", serviceTarget());
+  const stopNote = stopped.status === 0 || /could not find service|no such process/i.test(stopped.out) ? "the unverified service was stopped" : `WARNING: unverified service stop failed: ${stopped.out.trim().slice(0, 200)}`;
+  return {
+    ok: false,
+    note: `${SERVICE_LABEL} startup verification failed: ${verification.reason}; ${stopNote}`
+  };
+}
+function startServiceWithMaintenanceToken(maintenanceToken, deps = REAL_START_SERVICE_DEPS) {
+  if (!maintenanceToken) {
+    return { ok: false, note: "UPGRADE_BLOCKED: lifecycle start requires a maintenance handoff" };
+  }
+  if (deps.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
+  const path = plistPath();
+  if (!deps.exists(path) || !deps.exists(serviceEntryPath())) {
+    return { ok: false, note: "SERVICE_ENTRY_MISSING: run `engager-agent service install --repair`" };
+  }
+  const tmp = `${path}.${process.pid}.${randomUUID5()}.start-handoff`;
+  let clean;
+  try {
+    clean = plistWithoutMaintenanceToken(readFileSync6(path));
+    writeFileSync3(tmp, plistWithMaintenanceToken(clean, maintenanceToken), {
+      mode: 384,
+      flag: "wx"
+    });
+    const lint = plutilLint(tmp);
+    if (lint.status !== 0) {
+      throw new Error(`launchd maintenance handoff plist failed lint: ${lint.out.trim()}`);
+    }
+    commitVerifiedFileDurably(tmp, path, 384);
+  } catch (error2) {
+    rmSync4(tmp, { force: true });
+    return {
+      ok: false,
+      note: `UPGRADE_BLOCKED: could not install the one-time service handoff: ${error2 instanceof Error ? error2.message : String(error2)}`
+    };
+  }
+  let result;
+  try {
+    result = startService(deps);
+  } catch (error2) {
+    result = {
+      ok: false,
+      note: `launchd start failed during maintenance handoff: ${error2 instanceof Error ? error2.message : String(error2)}`
+    };
+  }
+  try {
+    writeFileSync3(tmp, clean, { mode: 384, flag: "wx" });
+    const lint = plutilLint(tmp);
+    if (lint.status !== 0) {
+      throw new Error(`clean plist failed lint: ${lint.out.trim()}`);
+    }
+    commitVerifiedFileDurably(tmp, path, 384);
+  } catch (error2) {
+    const stopped = deps.launch("bootout", serviceTarget());
+    const stoppedSafely = stopped.status === 0 || /could not find service|no such process/i.test(stopped.out);
+    return {
+      ok: false,
+      note: `UPGRADE_BLOCKED: service handoff token could not be scrubbed: ${error2 instanceof Error ? error2.message : String(error2)}; ` + (stoppedSafely ? "the service was stopped before maintenance release" : `WARNING: service stop failed: ${stopped.out.trim().slice(0, 200)}`)
+    };
+  } finally {
+    rmSync4(tmp, { force: true });
+  }
+  return result;
+}
+function atomicSymlink(path, target) {
+  const tmp = `${path}.${process.pid}.tmp`;
+  rmSync4(tmp, { recursive: true, force: true });
+  symlinkSync(target, tmp, "dir");
+  renameSync3(tmp, path);
+  syncDirectoryDurably(dirname2(path));
+}
+function restoreSymlink(path, target) {
+  if (target) atomicSymlink(path, target);
+  else if (pathExists(path)) removePathDurably(path);
+}
+function restorePlist(path, contents) {
+  if (!contents) {
+    if (pathExists(path)) removePathDurably(path);
+    return;
+  }
+  const tmp = `${path}.${process.pid}.rollback`;
+  writeFileSync3(tmp, contents, { mode: 384 });
+  commitVerifiedFileDurably(tmp, path, 384);
+}
+function pathExists(path) {
+  try {
+    lstatSync4(path);
+    return true;
+  } catch (error2) {
+    if (error2.code === "ENOENT") return false;
+    throw error2;
+  }
+}
+function ownedByCurrentUser(uid2) {
+  return typeof process.getuid !== "function" || uid2 === process.getuid();
+}
+function ensureOwnedPrivateDirectory(path, label) {
+  try {
+    const stat = lstatSync4(path);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`SERVICE_ENTRY_MISSING: ${label} must be a real directory`);
+    }
+    if (!ownedByCurrentUser(stat.uid)) {
+      throw new Error(`SERVICE_ENTRY_MISSING: ${label} is not owned by the current user`);
+    }
+    chmodSync5(path, 448);
+  } catch (error2) {
+    if (error2.code !== "ENOENT") throw error2;
+    mkdirSync5(path, { mode: 448 });
+  }
+  const verified = lstatSync4(path);
+  if (!verified.isDirectory() || verified.isSymbolicLink() || !ownedByCurrentUser(verified.uid) || (verified.mode & 511) !== 448) {
+    throw new Error(`SERVICE_ENTRY_MISSING: ${label} failed private-directory verification`);
+  }
+}
+function plistWithMaintenanceToken(contents, token) {
+  const xml = contents.toString("utf8");
+  if (xml.includes(`<key>${MAINTENANCE_TOKEN_ENV}</key>`)) {
+    throw new Error("prior plist unexpectedly retained a maintenance token");
+  }
+  const marker = "  <key>EnvironmentVariables</key>\n  <dict>\n";
+  if (!xml.includes(marker)) {
+    throw new Error("prior plist has no recognized environment dictionary for safe token handoff");
+  }
+  return xml.replace(
+    marker,
+    `${marker}    <key>${MAINTENANCE_TOKEN_ENV}</key>
+    <string>${xmlEscape(token)}</string>
+`
+  );
+}
+function plistWithoutMaintenanceToken(contents) {
+  const xml = contents.toString("utf8");
+  const key = `<key>${MAINTENANCE_TOKEN_ENV}</key>`;
+  if (!xml.includes(key)) return contents;
+  const pattern = new RegExp(
+    `^[\\t ]*<key>${MAINTENANCE_TOKEN_ENV}</key>\\r?\\n[\\t ]*<string>[^<]*</string>\\r?\\n`,
+    "gm"
+  );
+  const matches = xml.match(pattern) ?? [];
+  if (matches.length !== 1) {
+    throw new Error("service plist contains an ambiguous maintenance-token entry");
+  }
+  return Buffer.from(xml.replace(pattern, ""));
+}
+var REAL_SERVICE_WAIT_DEPS = {
+  now: Date.now,
+  service: serviceState,
+  status: readStatus,
+  pause: (milliseconds) => {
+    const wait = new Int32Array(new SharedArrayBuffer(4));
+    Atomics.wait(wait, 0, 0, milliseconds);
+  }
+};
+function waitForServiceLoad(options, timeoutMs = 45e3, deps = REAL_SERVICE_WAIT_DEPS) {
+  const deadline = deps.now() + timeoutMs;
+  do {
+    const verification = serviceVerificationState(
+      deps.service(),
+      deps.status(),
+      options
+    );
+    if (verification.state === "verified") return { ok: true };
+    if (verification.state === "terminal") {
+      return { ok: false, reason: verification.reason };
+    }
+    deps.pause(150);
+  } while (deps.now() < deadline);
+  return {
+    ok: false,
+    reason: "timed out waiting for current protocol control and engine readiness"
+  };
+}
+function serviceVerificationState(service, status, options = { notBefore: 0 }) {
+  const current = Boolean(
+    service.loaded && service.pid != null && status?.pid === service.pid && status.startedAt >= options.notBefore && (options.expectedVersion == null || status.version === options.expectedVersion) && pidAlive(service.pid)
+  );
+  if (!current || !status) return { state: "pending" };
+  const protocolVerified = status.protocol === "2.1" && status.protocolVerifiedAt != null && status.protocolVerifiedAt >= status.startedAt;
+  const engineVerified = status.engineReadyAt != null && status.engineReadyAt >= status.startedAt && status.engineReadyAt >= options.notBefore;
+  const startupVerified = status.startupVerifiedAt != null && status.startupVerifiedAt >= status.startedAt && status.startupVerifiedAt >= options.notBefore;
+  if (protocolVerified && engineVerified && startupVerified && status.state !== "halted" && status.state !== "upgrade-required") {
+    return { state: "verified" };
+  }
+  const reasonCode = status.quotaState?.reasonCode;
+  if (protocolVerified && !engineVerified && typeof reasonCode === "string" && TERMINAL_ENGINE_READINESS_REASONS.has(reasonCode)) {
+    return {
+      state: "terminal",
+      reason: engineReadinessFailureReason(reasonCode)
+    };
+  }
+  return { state: "pending" };
+}
+var TERMINAL_ENGINE_READINESS_REASONS = /* @__PURE__ */ new Set([
+  "engine_not_found",
+  "engine_unsupported_version",
+  "engine_auth_required",
+  "engine_auth_probe_unknown",
+  "engine_probe_failed"
+]);
+function engineReadinessFailureReason(reasonCode) {
+  const detail = {
+    engine_not_found: "the configured engine executable was not found",
+    engine_unsupported_version: "the configured engine version or capability surface is unsupported",
+    engine_auth_required: "the configured engine is not authenticated",
+    engine_auth_probe_unknown: "the configured engine authentication state could not be verified",
+    engine_probe_failed: "the configured engine readiness probe failed"
+  };
+  return `${detail[reasonCode] ?? "the configured engine is not ready"} (${reasonCode}); run \`engager-agent doctor\``;
+}
+function trustedServicePath(nodePath, enginePath) {
+  return [.../* @__PURE__ */ new Set([
+    dirname2(nodePath),
+    dirname2(enginePath),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin"
+  ])].join(":");
+}
+function readSymlink(path) {
+  try {
+    return lstatSync4(path).isSymbolicLink() ? readlinkSync(path) : null;
+  } catch {
+    return null;
+  }
+}
+function snapshotRuntimeLink(path) {
+  assertManagedRuntimeLink(path);
+  const target = readSymlink(path);
+  return target == null ? { target: null, payloadSha256: null } : { target, payloadSha256: payloadHashForTarget(target) };
+}
+function payloadHashForTarget(target) {
+  if (!isManagedRuntimeTarget(target)) {
+    throw new Error(`runtime target ${target} is outside managed versions`);
+  }
+  const directory = join7(runtimeRoot(), target);
+  const stat = lstatSync4(directory);
+  if (!stat.isDirectory() || (stat.mode & 511) !== 448 || !ownedByCurrentUser(stat.uid)) {
+    throw new Error(`runtime payload ${target} is not a private directory`);
+  }
+  const files = [
+    { name: "cli.mjs", mode: 320 },
+    { name: "engine-watchdog.mjs", mode: 320 },
+    { name: "LICENSE", mode: 256 },
+    { name: "THIRD_PARTY_NOTICES", mode: 256 },
+    { name: "THIRD_PARTY_COMPONENTS.json", mode: 256 }
+  ];
+  if (JSON.stringify(readdirSync(directory).sort()) !== JSON.stringify(files.map((file) => file.name).sort())) {
+    throw new Error(`runtime payload ${target} file set is not exact`);
+  }
+  return payloadManifestDigest(
+    files.map((file) => {
+      const path = join7(directory, file.name);
+      const fileStat = lstatSync4(path);
+      if (!fileStat.isFile() || (fileStat.mode & 511) !== file.mode || !ownedByCurrentUser(fileStat.uid)) {
+        throw new Error(`runtime payload ${target}/${file.name} mode is unsafe`);
+      }
+      return { ...file, bytes: readFileSync6(path) };
+    })
+  );
+}
+function smokeRecordedPayload(snapshot) {
+  if (snapshot.target == null || snapshot.payloadSha256 == null) {
+    return { ok: false, note: "recorded prior payload is absent" };
+  }
+  const hash = payloadHashForTarget(snapshot.target);
+  if (hash !== snapshot.payloadSha256) {
+    return { ok: false, note: "recorded prior payload hash changed" };
+  }
+  const directoryName = basename(snapshot.target);
+  const match = /^(.+)-[a-f0-9]{16}$/.exec(directoryName);
+  if (!match?.[1]) {
+    return { ok: false, note: "recorded prior payload version directory is malformed" };
+  }
+  const version2 = match[1];
+  return smokeDurablePayload(
+    {
+      version: version2,
+      sha256: snapshot.payloadSha256,
+      versionDir: join7(runtimeRoot(), snapshot.target),
+      versionEntryPath: join7(runtimeRoot(), snapshot.target, "cli.mjs")
+    },
+    version2
+  );
+}
+function verifyLinkReference(snapshot) {
+  if (snapshot.target == null || snapshot.payloadSha256 == null) return;
+  if (payloadHashForTarget(snapshot.target) !== snapshot.payloadSha256) {
+    throw new Error(`runtime payload ${snapshot.target} no longer matches its recorded hash`);
+  }
+}
+function verifyRuntimeLink(path, snapshot) {
+  assertManagedRuntimeLink(path);
+  if (readSymlink(path) !== snapshot.target) {
+    throw new Error(`${basename(path)} runtime link does not match the transition journal`);
+  }
+  verifyLinkReference(snapshot);
+}
+function verifyPlistSnapshot(snapshot) {
+  const expected = fileSnapshotContents(snapshot);
+  const path = plistPath();
+  if (expected == null) {
+    if (existsSync6(path)) throw new Error("service plist exists but the transition recorded none");
+    return;
+  }
+  const stat = lstatSync4(path);
+  if (!stat.isFile() || (stat.mode & 511) !== 384 || !ownedByCurrentUser(stat.uid)) {
+    throw new Error("service plist is not a private 0600 regular file");
+  }
+  const actual = readFileSync6(path);
+  if (sha256(actual) !== snapshot.sha256 || !actual.equals(expected)) {
+    throw new Error("service plist does not match the transition journal");
+  }
+}
+function verifyTransitionPayloadReferences(transition) {
+  verifyLinkReference(transition.prior.current);
+  verifyLinkReference(transition.prior.previous);
+  verifyLinkReference(transition.target.previous);
+  if (payloadHashForTarget(transition.target.linkTarget) !== transition.target.payloadSha256) {
+    throw new Error("target runtime payload no longer matches the transition journal");
+  }
+  fileSnapshotContents(transition.prior.plist);
+  fileSnapshotContents(transition.target.plist);
+}
+function verifyTransitionPrior(transition, expectedLoaded, verifyIntent = true, runtime = REAL_TRANSITION_RUNTIME) {
+  verifyRuntimeLink(join7(runtimeRoot(), "current"), transition.prior.current);
+  verifyRuntimeLink(join7(runtimeRoot(), "previous"), transition.prior.previous);
+  verifyPlistSnapshot(transition.prior.plist);
+  if (runtime.state().loaded !== expectedLoaded) {
+    throw new Error(`restored service did not reach recorded ${expectedLoaded ? "loaded" : "stopped"} state`);
+  }
+  if (verifyIntent && (transition.prior.installed || transition.target.installed) && runtime.disabled() !== transition.prior.disabled) {
+    throw new Error("restored launchd enabled/disabled intent does not match the transition journal");
+  }
+}
+function verifyTransitionTarget(transition, expectedLoaded) {
+  verifyRuntimeLink(join7(runtimeRoot(), "current"), {
+    target: transition.target.linkTarget,
+    payloadSha256: transition.target.payloadSha256
+  });
+  verifyRuntimeLink(join7(runtimeRoot(), "previous"), transition.target.previous);
+  verifyPlistSnapshot(transition.target.plist);
+  if (serviceState().loaded !== expectedLoaded) {
+    throw new Error(`upgraded service did not reach ${expectedLoaded ? "loaded" : "stopped"} state`);
+  }
+  if (transition.target.installed && serviceDisabledState() !== transition.target.disabled) {
+    throw new Error("upgraded launchd enabled/disabled intent does not match the transition journal");
+  }
+}
+function assertManagedRuntimeLink(path) {
+  try {
+    if (!lstatSync4(path).isSymbolicLink()) {
+      throw new Error(`SERVICE_ENTRY_MISSING: refusing to replace non-symlink runtime path ${path}`);
+    }
+  } catch (error2) {
+    if (error2.code === "ENOENT") return;
+    throw error2;
+  }
+}
+function verifyDurablePayload(target, expectedSha256, expectedFiles) {
+  const targetStat = lstatSync4(target);
+  if (!targetStat.isDirectory() || (targetStat.mode & 511) !== 448 || !ownedByCurrentUser(targetStat.uid)) {
+    throw new Error("SERVICE_ENTRY_MISSING: durable runner payload directory is unsafe");
+  }
+  const expectedNames = expectedFiles.map((file) => file.name).sort();
+  const actualNames = readdirSync(target).sort();
+  if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
+    throw new Error("SERVICE_ENTRY_MISSING: durable runner payload file set is not exact");
+  }
+  const actualFiles = expectedFiles.map((file) => {
+    const installed = join7(target, file.name);
+    const stat = lstatSync4(installed);
+    const bytes = readFileSync6(installed);
+    if (!stat.isFile() || (stat.mode & 511) !== file.mode || !ownedByCurrentUser(stat.uid) || !bytes.equals(file.bytes)) {
+      throw new Error(`SERVICE_ENTRY_MISSING: payload file ${file.name} failed exact verification`);
+    }
+    return { name: file.name, bytes, mode: stat.mode & 511 };
+  });
+  if (payloadManifestDigest(actualFiles) !== expectedSha256) {
+    throw new Error("SERVICE_ENTRY_MISSING: durable runner manifest failed SHA-256 verification");
+  }
+}
+function payloadManifestDigest(files) {
+  const hash = createHash2("sha256");
+  for (const file of [...files].sort((a, b3) => a.name.localeCompare(b3.name))) {
+    hash.update(file.name);
+    hash.update("\0");
+    hash.update(file.mode.toString(8));
+    hash.update("\0");
+    hash.update(createHash2("sha256").update(file.bytes).digest("hex"));
+    hash.update("\n");
+  }
+  return hash.digest("hex");
+}
+
+// src/journal.ts
+import { createHash as createHash3, randomUUID as randomUUID6 } from "node:crypto";
+import { chmodSync as chmodSync6, lstatSync as lstatSync5, readFileSync as readFileSync7, rmSync as rmSync5 } from "node:fs";
+import { join as join8 } from "node:path";
+
 // node_modules/@engager/runner-contract/dist/version.js
 var RUNNER_CONTRACT_MAJOR = 2;
 var RUNNER_CONTRACT_MINOR = 1;
@@ -12382,6 +13361,60 @@ var RUNNER_CONTRACT_COMPATIBILITY = Object.freeze({
   }),
   unsupportedBehavior: "upgrade_required_idle"
 });
+var RUNNER_CONTRACT_HEALTH = Object.freeze({
+  current: Object.freeze({
+    major: RUNNER_CONTRACT_MAJOR,
+    minor: RUNNER_CONTRACT_MINOR,
+    version: RUNNER_CONTRACT_VERSION
+  }),
+  supportedRanges: Object.freeze([
+    Object.freeze({
+      major: RUNNER_CONTRACT_MAJOR,
+      minimumMinor: RUNNER_CONTRACT_MINOR,
+      maximumMinor: null
+    })
+  ])
+});
+var RunnerContractHealthSchema = external_exports.object({
+  current: external_exports.object({
+    major: external_exports.literal(RUNNER_CONTRACT_MAJOR),
+    minor: external_exports.number().int().min(RUNNER_CONTRACT_MINOR).safe(),
+    version: external_exports.string().regex(/^2\.\d+$/)
+  }).passthrough(),
+  supportedRanges: external_exports.array(external_exports.object({
+    major: external_exports.number().int().positive().safe(),
+    minimumMinor: external_exports.number().int().nonnegative().safe(),
+    maximumMinor: external_exports.number().int().nonnegative().safe().nullable()
+  }).passthrough().superRefine((range, ctx) => {
+    if (range.maximumMinor !== null && range.maximumMinor < range.minimumMinor) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["maximumMinor"],
+        message: "maximumMinor must not be below minimumMinor"
+      });
+    }
+  })).min(1)
+}).passthrough().superRefine((contract, ctx) => {
+  const compatible = contract.supportedRanges.some((range) => range.major === RUNNER_CONTRACT_MAJOR && range.minimumMinor <= RUNNER_CONTRACT_MINOR && (range.maximumMinor === null || range.maximumMinor >= RUNNER_CONTRACT_MINOR));
+  if (!compatible) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["supportedRanges"],
+      message: "server no longer advertises compatibility with runner v2.1"
+    });
+  }
+});
+var RunnerDoctorHealthSchema = external_exports.object({
+  serverTime: external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  runnerContract: RunnerContractHealthSchema,
+  release: external_exports.union([
+    external_exports.object({
+      environment: external_exports.enum(["dev", "prod"]),
+      releaseSha: external_exports.string().min(1)
+    }).passthrough(),
+    external_exports.object({ environment: external_exports.null(), releaseSha: external_exports.null() }).passthrough()
+  ])
+}).passthrough();
 var RunnerProtocolVersionSchema = external_exports.object({
   major: external_exports.number().int().positive().safe(),
   minor: external_exports.number().int().nonnegative().safe()
@@ -13613,7 +14646,1034 @@ var RUNNER_V2_OPERATION_CONTRACTS = Object.freeze({
   })
 });
 
+// src/protocol.ts
+var RUNNER_SUPPORTED_VERSION = Object.freeze({
+  major: RUNNER_CONTRACT_MAJOR,
+  minor: RUNNER_CONTRACT_MINOR
+});
+var V1TriageSchema = external_exports.object({
+  toTriage: external_exports.number().int().nonnegative(),
+  topByReach: external_exports.number().int().nonnegative(),
+  random: external_exports.number().int().nonnegative()
+}).strict();
+var RunnerV1WorkOrderSchema = external_exports.object({
+  mode: external_exports.enum(["draft", "rank"]),
+  commentsToDraft: external_exports.number().int().nonnegative(),
+  candidatesToRank: external_exports.number().int().nonnegative(),
+  requestedDrafts: external_exports.number().int().nonnegative(),
+  pendingReplies: external_exports.number().int().nonnegative(),
+  triage: V1TriageSchema,
+  windowEndsAt: external_exports.number().int().nonnegative()
+}).strict();
+var RunnerV1DirectiveSchema = external_exports.object({
+  directive: external_exports.enum(["run", "idle", "stop"]),
+  reason: external_exports.string().min(1),
+  workOrder: RunnerV1WorkOrderSchema.nullable(),
+  intervalMinutes: external_exports.number().int().positive().nullable().optional(),
+  intervalMinutesBase: external_exports.number().int().positive().nullable().optional(),
+  // The compatibility server still includes its persisted heartbeat row. It
+  // is deliberately ignored by the executor but named here so parsing stays
+  // strict rather than accepting arbitrary forward fields.
+  runner: external_exports.unknown().optional()
+}).strict();
+function parseNegotiatedDirective(value) {
+  const v2 = RunnerDirectiveResponseSchema.safeParse(value);
+  if (v2.success) {
+    return {
+      protocol: "2.1",
+      directive: { ...v2.data, reason: sanitizeTerminalText(v2.data.reason) }
+    };
+  }
+  const directive = RunnerV1DirectiveSchema.parse(value);
+  return {
+    protocol: "v1",
+    directive: { ...directive, reason: sanitizeTerminalText(directive.reason) }
+  };
+}
+function classifyRunnerSurface(names) {
+  const actual = [...new Set(names)].sort();
+  const v2 = [...RUNNER_V2_TOOL_NAMES].sort();
+  if (sameStrings(actual, v2)) return "v2";
+  const v1 = [...RUNNER_V1_TOOL_NAMES].sort();
+  if (sameStrings(actual, v1)) return "v1-or-bootstrap";
+  throw new Error(
+    `runner credential tool surface mismatch (received ${actual.join(", ") || "no tools"})`
+  );
+}
+function sameStrings(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+var ProposalNote = external_exports.string().trim().min(1).max(400).optional();
+var TriageProposalSchema = external_exports.object({
+  lane: external_exports.literal("triage"),
+  items: external_exports.array(RunnerTriageItemSchema).min(1),
+  note: ProposalNote
+}).strict();
+var ToollessDraftItemSchema = RunnerDraftItemSchema.superRefine((item, ctx) => {
+  if (item.webSearched === true) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["webSearched"],
+      message: "tool-less runner output cannot claim web research"
+    });
+  }
+  if ((item.sources?.length ?? 0) > 0) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["sources"],
+      message: "tool-less runner output cannot attach external sources"
+    });
+  }
+});
+var DraftProposalFields = {
+  items: external_exports.array(ToollessDraftItemSchema).min(1),
+  note: ProposalNote
+};
+var DraftProposalSchema = external_exports.object({ lane: external_exports.literal("draft"), ...DraftProposalFields }).strict();
+var DiscoverDraftProposalSchema = external_exports.object({ lane: external_exports.literal("discover_draft"), ...DraftProposalFields }).strict();
+var ReplyProposalSchema = external_exports.object({
+  lane: external_exports.literal("reply"),
+  items: external_exports.array(RunnerReplyItemSchema).min(1),
+  note: ProposalNote
+}).strict();
+var AgentProposalSchema = external_exports.discriminatedUnion("lane", [
+  TriageProposalSchema,
+  DraftProposalSchema,
+  DiscoverDraftProposalSchema,
+  ReplyProposalSchema
+]);
+function parseAgentProposal(value, expectedLane) {
+  const proposal = AgentProposalSchema.parse(value);
+  if (proposal.lane !== expectedLane) {
+    throw new Error(`engine returned lane ${proposal.lane}; expected ${expectedLane}`);
+  }
+  return proposal;
+}
+function workOrderItemIds(order) {
+  return order.lane === "reply" ? [...order.input.incomingCommentIds] : [...order.input.candidateIds];
+}
+function contextUnprocessedIds(context) {
+  const value = context.receiptState.unprocessedFrozenIds;
+  if (!Array.isArray(value)) return [...context.requestedItemIds];
+  const ids = value.filter(
+    (item) => typeof item === "number" && Number.isSafeInteger(item) && item > 0
+  );
+  const frozen = new Set(context.frozenItemIds);
+  return ids.filter((id) => frozen.has(id));
+}
+function proposalItemId(proposal, item) {
+  return proposal.lane === "reply" ? item.incomingCommentId : item.candidateId;
+}
+
+// src/journal.ts
+var JOURNAL_EXPIRY_SKEW_MS = 5 * 6e4;
+var SubmissionJournalSchema = external_exports.discriminatedUnion("tool", [
+  external_exports.object({ tool: external_exports.literal("runner_submit_triage"), input: RunnerSubmitTriageInputSchema }).strict(),
+  external_exports.object({ tool: external_exports.literal("runner_submit_batch"), input: RunnerSubmitBatchInputSchema }).strict(),
+  external_exports.object({ tool: external_exports.literal("runner_submit_replies"), input: RunnerSubmitRepliesInputSchema }).strict()
+]);
+var ActiveWorkJournalSchema = external_exports.object({
+  version: external_exports.literal(1),
+  runnerId: external_exports.string().min(1).max(200),
+  mcpUrl: external_exports.string().url().max(2e3),
+  credentialFingerprint: external_exports.string().regex(/^[a-f0-9]{64}$/),
+  savedAt: external_exports.number().int().nonnegative(),
+  leaseToken: external_exports.string().min(16).max(512),
+  leaseExpiresAt: external_exports.number().int().nonnegative().optional(),
+  claimClockSkewMs: external_exports.number().int().safe().optional(),
+  workOrder: RunnerWorkOrderSchema,
+  engineAttempt: external_exports.object({
+    id: external_exports.string().uuid(),
+    startedAt: external_exports.number().int().nonnegative(),
+    sessionDay: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+  }).strict().optional(),
+  cognition: external_exports.object({
+    proposal: AgentProposalSchema,
+    accounted: external_exports.boolean(),
+    model: external_exports.string().min(1).max(200).optional(),
+    durationMs: external_exports.number().int().nonnegative(),
+    usage: external_exports.object({ inputTokens: external_exports.number().int().nonnegative().optional(), outputTokens: external_exports.number().int().nonnegative().optional() }).strict().optional()
+  }).strict().optional(),
+  submission: SubmissionJournalSchema.optional(),
+  completion: RunnerCompleteWorkInputSchema.optional()
+}).strict();
+function journalPath() {
+  return join8(agentHome(), "active-work.json");
+}
+function readJournal() {
+  const path = journalPath();
+  let stat;
+  try {
+    stat = lstatSync5(path);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return null;
+    throw error2;
+  }
+  const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
+  if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
+    throw new Error("active work journal is not a private regular file");
+  }
+  return ActiveWorkJournalSchema.parse(JSON.parse(readFileSync7(path, "utf8")));
+}
+function writeJournal(value) {
+  const parsed = ActiveWorkJournalSchema.parse({ ...value, savedAt: Date.now() });
+  writePrivateJsonDurably(journalPath(), parsed);
+  return parsed;
+}
+function startJournal(input) {
+  const journal = {
+    version: 1,
+    runnerId: input.runnerId,
+    mcpUrl: input.mcpUrl,
+    credentialFingerprint: input.credentialFingerprint,
+    savedAt: Date.now(),
+    leaseToken: input.leaseToken,
+    leaseExpiresAt: input.workOrder.leaseExpiresAt,
+    ...input.claimClockSkewMs != null ? { claimClockSkewMs: input.claimClockSkewMs } : {},
+    workOrder: input.workOrder
+  };
+  return writeJournal(journal);
+}
+function journalBinding(config2) {
+  return {
+    mcpUrl: new URL(config2.mcpUrl).toString(),
+    credentialFingerprint: createHash3("sha256").update(config2.apiKey).digest("hex")
+  };
+}
+function withJournalSubmission(journal, submission) {
+  const next = { ...journal, submission, completion: void 0 };
+  return writeJournal(next);
+}
+function withJournalLease(journal, leaseExpiresAt) {
+  return writeJournal({ ...journal, leaseExpiresAt });
+}
+function withJournalCognition(journal, cognition) {
+  return writeJournal({ ...journal, cognition });
+}
+function withJournalEngineAttempt(journal, engineAttempt) {
+  return writeJournal({ ...journal, engineAttempt });
+}
+function withJournalCompletion(journal, completion) {
+  const next = { ...journal, completion };
+  return writeJournal(next);
+}
+function clearJournal() {
+  rmSync5(journalPath(), { force: true });
+}
+function inspectJournal(now = Date.now()) {
+  try {
+    const journal = readJournal();
+    if (!journal) return { state: "absent" };
+    if (Math.abs(journal.claimClockSkewMs ?? 0) > 5 * 6e4) {
+      return {
+        state: "invalid",
+        detail: "active-work.json was claimed while the local clock was untrusted; reconcile it with the original credential after correcting the clock"
+      };
+    }
+    const terminalAt = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      journal.workOrder.expiresAt + JOURNAL_EXPIRY_SKEW_MS
+    );
+    return {
+      state: now >= terminalAt ? "expired" : "active",
+      journal,
+      terminalAt
+    };
+  } catch {
+    return {
+      state: "invalid",
+      detail: "active-work.json is corrupt, unsafe, or not a private regular file"
+    };
+  }
+}
+function prepareSetupJournal(now = Date.now()) {
+  const inspection = inspectJournal(now);
+  if (inspection.state === "absent") return { state: "ready" };
+  if (inspection.state === "invalid") return { state: "blocked", reason: "invalid" };
+  if (inspection.state === "active") {
+    return { state: "blocked", reason: "active", terminalAt: inspection.terminalAt };
+  }
+  const destination = join8(
+    agentHome(),
+    `active-work.expired.${now}.${randomUUID6()}.json`
+  );
+  try {
+    renamePathDurably(journalPath(), destination);
+    chmodSync6(destination, 384);
+  } catch (error2) {
+    throw new RunnerFault("VALIDATION_REJECTED", "expired recovery journal could not be quarantined", {
+      impact: "Setup stopped before replacing the endpoint, credential, or engine.",
+      recovery: "Run `engager-agent doctor` and repair ~/.engager ownership/permissions before retrying setup.",
+      cause: error2
+    });
+  }
+  return { state: "quarantined", path: destination, terminalAt: inspection.terminalAt };
+}
+
+// src/upgrade.ts
+var REAL_UPGRADE_DEPS = {
+  load: loadConfig,
+  service: serviceState,
+  serviceDisabled: serviceDisabledState,
+  owner: inspectRunnerLock,
+  ownerLive: isLockOwnerLive,
+  journal: inspectJournal,
+  maintenance: acquireMaintenanceLock,
+  execution: (runnerId, maintenanceToken) => acquireRunnerLock(runnerId, void 0, maintenanceToken),
+  now: Date.now,
+  pause: (milliseconds) => {
+    const wait = new Int32Array(new SharedArrayBuffer(4));
+    Atomics.wait(wait, 0, 0, milliseconds);
+  },
+  stage: installDurablePayload,
+  smoke: (payload, version2) => smokeDurablePayload(payload, version2),
+  activateStandalone: activateStandaloneDurablePayload,
+  repairService: installService,
+  reconcileService: reconcileServiceUpgradeTransition,
+  startService: startServiceWithMaintenanceToken,
+  stopService,
+  uninstallService,
+  signal: (pid, signal) => process.kill(pid, signal)
+};
+function upgradeAgent(version2, deps = REAL_UPGRADE_DEPS) {
+  const config2 = deps.load();
+  let maintenance;
+  try {
+    maintenance = deps.maintenance(config2?.runnerId ?? "global");
+  } catch (error2) {
+    return {
+      ok: false,
+      note: `UPGRADE_BLOCKED: another upgrade transition is active or unverifiable: ${errorMessage(error2)}`
+    };
+  }
+  try {
+    const preflightOwner = deps.owner(config2?.runnerId ?? "global");
+    if (preflightOwner.state === "invalid") {
+      return unsafeLifecycleOwner(preflightOwner.detail);
+    }
+    const recovery = reconcileUnderMaintenance(
+      deps,
+      config2?.runnerId ?? "global",
+      maintenance
+    );
+    if (!recovery.ok) return recovery;
+    if (recovery.recovered) {
+      return {
+        ok: false,
+        note: `UPGRADE_RECOVERED_RETRY_REQUIRED: ${recovery.note}; rerun \`engager-agent upgrade\` to install the requested version`
+      };
+    }
+    const state = deps.service();
+    const priorDisabled = state.installed ? deps.serviceDisabled() : false;
+    if (state.installed && priorDisabled == null) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: launchd enabled/disabled intent could not be determined"
+      };
+    }
+    const ownerInspection = deps.owner(config2?.runnerId ?? "global");
+    if (ownerInspection.state === "invalid") {
+      return {
+        ok: false,
+        note: `UPGRADE_BLOCKED: execution lock ownership is unsafe: ${ownerInspection.detail}`
+      };
+    }
+    const owner = ownerInspection.state === "valid" ? ownerInspection.owner : null;
+    const liveOwner = owner != null && deps.ownerLive(owner);
+    const serviceOwnsLock = Boolean(
+      liveOwner && state.loaded && state.pid != null && owner?.pid === state.pid
+    );
+    if (liveOwner && !serviceOwnsLock) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: an active foreground runner owns the execution lock; stop it before upgrading"
+      };
+    }
+    if (state.loaded && !serviceOwnsLock) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: the loaded service does not have a verifiable matching runner lock; run `engager-agent stop`, then retry"
+      };
+    }
+    if (!serviceOwnsLock) {
+      try {
+        const idleBarrier = acquireExecutionBarrier(
+          deps,
+          config2?.runnerId ?? "global",
+          maintenance.owner.token,
+          0
+        );
+        idleBarrier.release();
+      } catch (error2) {
+        return {
+          ok: false,
+          note: `UPGRADE_BLOCKED: the existing execution lock is live or unverifiable: ${errorMessage(error2)}`
+        };
+      }
+    }
+    const journalBlock = unsafeJournalNote(deps.journal());
+    if (journalBlock) return { ok: false, note: journalBlock };
+    if (state.installed) {
+      try {
+        const repaired = deps.repairService(version2, {
+          maintenanceToken: maintenance.owner.token,
+          afterServiceStopped: () => {
+            const transitionLock = acquireExecutionBarrier(
+              deps,
+              config2?.runnerId ?? "global",
+              maintenance.owner.token,
+              5e3
+            );
+            try {
+              const stoppedJournalBlock = unsafeJournalNote(deps.journal());
+              if (stoppedJournalBlock) throw new Error(stoppedJournalBlock);
+              return transitionLock;
+            } catch (error2) {
+              transitionLock.release();
+              throw error2;
+            }
+          },
+          beforeRollbackServiceStart: () => acquireExecutionBarrier(
+            deps,
+            config2?.runnerId ?? "global",
+            maintenance.owner.token,
+            5e3
+          ),
+          leaveStopped: priorDisabled === true,
+          priorLoaded: state.loaded,
+          priorDisabled: priorDisabled === true,
+          targetDisabled: priorDisabled === true
+        });
+        return repaired.ok ? {
+          ok: true,
+          note: `upgrade activated and installed service verified \u2014 ${repaired.note}`
+        } : repaired;
+      } catch (error2) {
+        return {
+          ok: false,
+          note: `SERVICE_ENTRY_MISSING: upgrade failed with the prior service payload preserved: ${errorMessage(error2)}`
+        };
+      }
+    }
+    const payload = deps.stage(version2);
+    const smoke = deps.smoke(payload, version2);
+    if (!smoke.ok) return smoke;
+    const activation = deps.activateStandalone(payload, version2);
+    if (!activation.ok) {
+      const restored = reconcileUnderMaintenance(
+        deps,
+        config2?.runnerId ?? "global",
+        maintenance
+      );
+      return {
+        ok: false,
+        note: `${activation.note}; ${restored.ok ? restored.note : restored.note}`
+      };
+    }
+    return {
+      ok: true,
+      note: `${activation.note} at ~/.engager/runtime/current/cli.mjs; no service was installed`
+    };
+  } catch (error2) {
+    return {
+      ok: false,
+      note: `SERVICE_ENTRY_MISSING: upgrade failed with the prior durable payload preserved: ${errorMessage(error2)}`
+    };
+  } finally {
+    maintenance.release();
+  }
+}
+function installServiceWithMaintenance(version2, deps = REAL_UPGRADE_DEPS) {
+  const config2 = deps.load();
+  if (!config2) {
+    return { ok: false, note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` first" };
+  }
+  let maintenance;
+  try {
+    maintenance = deps.maintenance(config2.runnerId);
+  } catch (error2) {
+    return {
+      ok: false,
+      note: `UPGRADE_BLOCKED: service install could not acquire maintenance: ${errorMessage(error2)}`
+    };
+  }
+  try {
+    const owner = deps.owner(config2.runnerId);
+    if (owner.state === "invalid") return unsafeLifecycleOwner(owner.detail);
+    const recovery = reconcileUnderMaintenance(deps, config2.runnerId, maintenance);
+    if (!recovery.ok) return recovery;
+    if (recovery.recovered) {
+      return {
+        ok: false,
+        note: `UPGRADE_RECOVERED_RETRY_REQUIRED: ${recovery.note}; rerun the service install after recovery`
+      };
+    }
+    const state = deps.service();
+    if (!state.supported) {
+      return {
+        ok: false,
+        note: "native background service is macOS-only; use `engager-agent run`"
+      };
+    }
+    if (state.installed) {
+      return { ok: false, note: "service is already installed; use `engager-agent service repair`" };
+    }
+    const priorDisabled = deps.serviceDisabled();
+    if (priorDisabled == null) {
+      return { ok: false, note: "launchd enabled/disabled intent could not be determined" };
+    }
+    try {
+      const idle = acquireExecutionBarrier(
+        deps,
+        config2.runnerId,
+        maintenance.owner.token,
+        0
+      );
+      idle.release();
+    } catch (error2) {
+      return {
+        ok: false,
+        note: `UPGRADE_BLOCKED: fresh install found live or unverifiable execution: ${errorMessage(error2)}`
+      };
+    }
+    const journalBlock = unsafeJournalNote(deps.journal());
+    if (journalBlock) return { ok: false, note: journalBlock };
+    return deps.repairService(version2, {
+      maintenanceToken: maintenance.owner.token,
+      afterServiceStopped: () => {
+        const transition = acquireExecutionBarrier(
+          deps,
+          config2.runnerId,
+          maintenance.owner.token,
+          5e3
+        );
+        try {
+          const stoppedJournalBlock = unsafeJournalNote(deps.journal());
+          if (stoppedJournalBlock) throw new Error(stoppedJournalBlock);
+          return transition;
+        } catch (error2) {
+          transition.release();
+          throw error2;
+        }
+      },
+      beforeRollbackServiceStart: () => acquireExecutionBarrier(
+        deps,
+        config2.runnerId,
+        maintenance.owner.token,
+        5e3
+      ),
+      leaveStopped: false,
+      priorLoaded: false,
+      priorDisabled,
+      targetDisabled: false
+    });
+  } finally {
+    maintenance.release();
+  }
+}
+function ensureServiceInstalledWithMaintenance(version2, deps = REAL_UPGRADE_DEPS) {
+  return withLifecycleMaintenance("service install", deps, (config2, maintenance) => {
+    if (!config2) {
+      return { ok: false, note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` first" };
+    }
+    const state = deps.service();
+    if (!state.supported) {
+      return { ok: false, note: "native background service is macOS-only; use `engager-agent run`" };
+    }
+    const priorDisabled = deps.serviceDisabled();
+    if (priorDisabled == null) {
+      return { ok: false, note: "launchd enabled/disabled intent could not be determined" };
+    }
+    const ownerInspection = deps.owner(config2.runnerId);
+    if (ownerInspection.state === "invalid") return unsafeLifecycleOwner(ownerInspection.detail);
+    const owner = ownerInspection.state === "valid" ? ownerInspection.owner : null;
+    const liveOwner = owner != null && deps.ownerLive(owner);
+    const serviceOwnsLock = Boolean(
+      liveOwner && state.loaded && state.pid != null && owner?.pid === state.pid
+    );
+    if (liveOwner && !serviceOwnsLock) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: an active foreground runner owns execution; stop it before installing the service"
+      };
+    }
+    if (state.loaded && !serviceOwnsLock) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: loaded service ownership could not be verified before install/repair"
+      };
+    }
+    if (!serviceOwnsLock) {
+      try {
+        const idle = acquireExecutionBarrier(
+          deps,
+          config2.runnerId,
+          maintenance.owner.token,
+          0
+        );
+        idle.release();
+      } catch (error2) {
+        return {
+          ok: false,
+          note: `UPGRADE_BLOCKED: service install found live or unverifiable execution: ${errorMessage(error2)}`
+        };
+      }
+    }
+    const journalBlock = unsafeJournalNote(deps.journal());
+    if (journalBlock) return { ok: false, note: journalBlock };
+    const targetDisabled = state.installed ? priorDisabled : false;
+    const repaired = deps.repairService(version2, {
+      maintenanceToken: maintenance.owner.token,
+      afterServiceStopped: () => {
+        const transition = acquireExecutionBarrier(
+          deps,
+          config2.runnerId,
+          maintenance.owner.token,
+          5e3
+        );
+        try {
+          const stoppedJournalBlock = unsafeJournalNote(deps.journal());
+          if (stoppedJournalBlock) throw new Error(stoppedJournalBlock);
+          return transition;
+        } catch (error2) {
+          transition.release();
+          throw error2;
+        }
+      },
+      beforeRollbackServiceStart: () => acquireExecutionBarrier(
+        deps,
+        config2.runnerId,
+        maintenance.owner.token,
+        5e3
+      ),
+      leaveStopped: targetDisabled,
+      priorLoaded: state.loaded,
+      priorDisabled,
+      targetDisabled
+    });
+    return repaired.ok && state.installed ? { ok: true, note: `installed service repaired and verified \u2014 ${repaired.note}` } : repaired;
+  });
+}
+function startServiceWithMaintenance(deps = REAL_UPGRADE_DEPS) {
+  return withLifecycleMaintenance("start", deps, (config2, maintenance) => {
+    if (!config2) {
+      return { ok: false, note: "RUNNER_NOT_CONFIGURED: run `engager-agent setup` first" };
+    }
+    const state = deps.service();
+    const ownerInspection = deps.owner(config2.runnerId);
+    if (ownerInspection.state === "invalid") return unsafeLifecycleOwner(ownerInspection.detail);
+    const owner = ownerInspection.state === "valid" ? ownerInspection.owner : null;
+    if (state.loaded) {
+      return owner && state.pid === owner.pid && deps.ownerLive(owner) ? { ok: true, note: "com.engager.agent is already running with a verified execution owner" } : {
+        ok: false,
+        note: "UPGRADE_BLOCKED: launchd reports a loaded service without a matching verified execution owner"
+      };
+    }
+    if (!state.installed) {
+      return { ok: false, note: "SERVICE_ENTRY_MISSING: service is not installed" };
+    }
+    if (owner && deps.ownerLive(owner)) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: a verified foreground runner owns execution; stop it before starting the service"
+      };
+    }
+    return deps.startService(maintenance.owner.token);
+  });
+}
+function resumeAgentWithMaintenance(applyLocalResume, deps = REAL_UPGRADE_DEPS) {
+  return withLifecycleMaintenance("resume", deps, (config2, maintenance) => {
+    const runnerId = config2?.runnerId ?? "global";
+    const state = deps.service();
+    const ownerInspection = deps.owner(runnerId);
+    if (ownerInspection.state === "invalid") return unsafeLifecycleOwner(ownerInspection.detail);
+    const owner = ownerInspection.state === "valid" ? ownerInspection.owner : null;
+    const liveOwner = owner != null && deps.ownerLive(owner);
+    if (state.loaded && (!owner || state.pid !== owner.pid || !liveOwner)) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: loaded service ownership could not be verified before resume"
+      };
+    }
+    applyLocalResume();
+    if (state.loaded) {
+      return { ok: true, note: "local pause/halt cleared for the verified running service" };
+    }
+    if (liveOwner) {
+      return { ok: true, note: `local pause/halt cleared for verified foreground runner pid ${owner.pid}` };
+    }
+    if (!state.installed) {
+      return { ok: true, note: "local pause/halt cleared \u2014 start with `engager-agent run`" };
+    }
+    return deps.startService(maintenance.owner.token);
+  });
+}
+function stopAgentWithMaintenance(deps = REAL_UPGRADE_DEPS) {
+  return withLifecycleMaintenance("stop", deps, (config2, maintenance) => {
+    const runnerId = config2?.runnerId ?? "global";
+    const state = deps.service();
+    const before = deps.owner(runnerId);
+    if (before.state === "invalid") return unsafeLifecycleOwner(before.detail);
+    const serviceResult = state.installed ? deps.stopService() : { ok: true, note: "native service is not installed" };
+    const after = deps.owner(runnerId);
+    if (after.state === "invalid") return unsafeLifecycleOwner(after.detail);
+    let signalNote = "no verified live foreground owner";
+    if (after.state === "valid" && deps.ownerLive(after.owner)) {
+      if (!after.owner.processIdentity) {
+        return unsafeLifecycleOwner("live execution owner lacks process identity");
+      }
+      try {
+        deps.signal(after.owner.pid, "SIGTERM");
+        signalNote = `sent SIGTERM to verified runner pid ${after.owner.pid}`;
+      } catch (error2) {
+        return {
+          ok: false,
+          note: `UPGRADE_BLOCKED: verified runner could not be signaled: ${errorMessage(error2)}`
+        };
+      }
+    }
+    try {
+      const barrier = acquireExecutionBarrier(
+        deps,
+        runnerId,
+        maintenance.owner.token,
+        5e3
+      );
+      barrier.release();
+    } catch (error2) {
+      return {
+        ok: false,
+        note: `UPGRADE_BLOCKED: stop could not prove execution quiescence: ${errorMessage(error2)}`
+      };
+    }
+    return {
+      ok: serviceResult.ok,
+      note: `${serviceResult.note}; ${signalNote}; execution is quiescent`
+    };
+  });
+}
+function uninstallServiceWithMaintenance(deps = REAL_UPGRADE_DEPS) {
+  return withLifecycleMaintenance("uninstall", deps, (config2, maintenance) => {
+    const runnerId = config2?.runnerId ?? "global";
+    const state = deps.service();
+    const ownerInspection = deps.owner(runnerId);
+    if (ownerInspection.state === "invalid") return unsafeLifecycleOwner(ownerInspection.detail);
+    const owner = ownerInspection.state === "valid" ? ownerInspection.owner : null;
+    if (state.loaded && (!owner || state.pid !== owner.pid || !deps.ownerLive(owner))) {
+      return {
+        ok: false,
+        note: "UPGRADE_BLOCKED: loaded service ownership could not be verified before uninstall"
+      };
+    }
+    const result = deps.uninstallService();
+    if (!state.loaded) return result;
+    try {
+      const barrier = acquireExecutionBarrier(
+        deps,
+        runnerId,
+        maintenance.owner.token,
+        5e3
+      );
+      barrier.release();
+      return result;
+    } catch (error2) {
+      return {
+        ok: false,
+        note: `${result.note}; uninstall could not prove the old service exited: ${errorMessage(error2)}`
+      };
+    }
+  });
+}
+function withLifecycleMaintenance(action, deps, mutate) {
+  const config2 = deps.load();
+  const runnerId = config2?.runnerId ?? "global";
+  let maintenance;
+  try {
+    maintenance = deps.maintenance(runnerId);
+  } catch (error2) {
+    return {
+      ok: false,
+      note: `UPGRADE_BLOCKED: ${action} could not acquire lifecycle maintenance: ${errorMessage(error2)}`
+    };
+  }
+  try {
+    const owner = deps.owner(runnerId);
+    if (owner.state === "invalid") return unsafeLifecycleOwner(owner.detail);
+    const recovery = reconcileUnderMaintenance(deps, runnerId, maintenance);
+    if (!recovery.ok) return recovery;
+    return mutate(config2, maintenance);
+  } catch (error2) {
+    return {
+      ok: false,
+      note: `UPGRADE_BLOCKED: ${action} failed inside lifecycle maintenance: ${errorMessage(error2)}`
+    };
+  } finally {
+    maintenance.release();
+  }
+}
+function unsafeLifecycleOwner(detail) {
+  return {
+    ok: false,
+    note: `UPGRADE_BLOCKED: execution lock ownership is unsafe: ${detail}; nothing was signaled or removed`
+  };
+}
+function reconcileUnderMaintenance(deps, runnerId, maintenance) {
+  const result = deps.reconcileService({
+    maintenanceToken: maintenance.owner.token,
+    acquireBarrier: () => acquireExecutionBarrier(
+      deps,
+      runnerId,
+      maintenance.owner.token,
+      5e3
+    )
+  });
+  return result.ok ? { ok: true, note: result.note, ...result.recovered ? { recovered: true } : {} } : {
+    ok: false,
+    note: result.recovered ? `UPGRADE_RECOVERY_INCOMPLETE: ${result.note}` : `UPGRADE_RECOVERY_REQUIRED: ${result.note}`,
+    ...result.recovered ? { recovered: true } : {}
+  };
+}
+function acquireExecutionBarrier(deps, runnerId, maintenanceToken, timeoutMs) {
+  const deadline = deps.now() + timeoutMs;
+  let lastError;
+  do {
+    try {
+      return deps.execution(runnerId, maintenanceToken);
+    } catch (error2) {
+      lastError = error2;
+      if (deps.now() >= deadline) break;
+      deps.pause(Math.min(50, Math.max(1, deadline - deps.now())));
+    }
+  } while (deps.now() <= deadline);
+  throw new Error(
+    `execution lock did not become safely available during maintenance: ${errorMessage(lastError)}`
+  );
+}
+function unsafeJournalNote(inspection) {
+  if (inspection.state === "active") {
+    return `UPGRADE_BLOCKED: active-work.json still carries live lease authority until ${new Date(inspection.terminalAt).toISOString()}; run \`engager-agent run --once\` to reconcile it before upgrading`;
+  }
+  if (inspection.state === "invalid") {
+    return "UPGRADE_BLOCKED: active-work.json is unsafe or unverifiable; run `engager-agent doctor` and reconcile it with the existing credential before upgrading";
+  }
+  return null;
+}
+function errorMessage(error2) {
+  return error2 instanceof Error ? error2.message : String(error2);
+}
+
+// src/commands.ts
+var fmtAge = (timestamp, now) => {
+  const minutes = Math.round((now - timestamp) / 6e4);
+  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : `${Math.round(minutes / 60)} h ago`;
+};
+function statusCommand(json) {
+  const transitionPending = hasUpgradeTransition();
+  if (transitionPending) process.exitCode = 1;
+  const now = Date.now();
+  const config2 = loadConfig();
+  const status = readStatus();
+  const halt = readHalt();
+  const pause = readPause(now);
+  const service = serviceState();
+  const executionLock = diagnoseLock(inspectRunnerLock(config2?.runnerId ?? "global"));
+  const maintenanceLock = diagnoseLock(inspectMaintenanceLock());
+  const unsafeLock = executionLock.state === "invalid" || maintenanceLock.state === "invalid";
+  if (unsafeLock) process.exitCode = 1;
+  const alive = status != null && executionLock.state === "active" && executionLock.pid === status.pid;
+  const verdict = unsafeLock ? "LOCK SAFETY BLOCK \u2014 run `engager-agent doctor` before any lifecycle action" : transitionPending ? "UPGRADE RECOVERY REQUIRED \u2014 run `engager-agent upgrade`, `engager-agent start`, or `engager-agent service repair`" : halt ? `HALTED \u2014 ${halt.reason}` : !config2 ? configFileMode() != null && configFileMode() !== 384 ? "configuration blocked \u2014 agent.json must be 0600" : "not configured" : alive ? pause ? "paused locally" : `running \u2014 ${status.state}` : service.loaded ? "service loaded; waiting for runner heartbeat" : "not running";
+  const safeConfig = config2 ? {
+    mcpUrl: config2.mcpUrl,
+    runnerId: config2.runnerId,
+    engine: config2.engine,
+    model: config2.model ?? null,
+    dailySessionCap: config2.dailySessionCap,
+    legacyCompatibility: config2.legacy != null
+  } : null;
+  if (json) {
+    process.stdout.write(
+      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service, transitionPending, locks: { execution: executionLock, maintenance: maintenanceLock } }, null, 2)}
+`
+    );
+    return;
+  }
+  const lines = [`engager-agent: ${verdict}`];
+  if (config2) {
+    lines.push(
+      `  engine ${config2.engine}${config2.model ? ` (${config2.model})` : " (provider default)"} \xB7 runner ${config2.runnerId}`
+    );
+  }
+  if (status) {
+    lines.push(
+      `  protocol ${status.protocol ?? "not negotiated"} \xB7 sessions today ${status.sessionsToday}/${config2?.dailySessionCap ?? "?"}`
+    );
+    if (status.lastCycle) {
+      const blocked = status.lastCycle.errorCode === "ENGINE_QUOTA" || status.lastCycle.errorCode === "ENGINE_OVERLOADED" || status.lastCycle.errorCode === "CONTRACT_UPGRADE_REQUIRED";
+      lines.push(
+        `  last cycle ${status.lastCycle.ok ? "ok" : blocked ? "BLOCKED" : "FAILED"} ${fmtAge(status.lastCycle.at, now)} \u2014 ${status.lastCycle.note}`
+      );
+      if (status.lastCycle.receipt) {
+        const receipt = status.lastCycle.receipt;
+        lines.push(
+          `  last receipt ${receipt.status} \xB7 accepted ${receipt.accepted} \xB7 existing ${receipt.alreadyExists} \xB7 rejected ${receipt.rejected} \xB7 failed ${receipt.failed} \xB7 unfinished ${receipt.unfinished}`
+        );
+      }
+    }
+    if (status.nextPollAt && alive) lines.push(`  next control poll ${new Date(status.nextPollAt).toLocaleTimeString()}`);
+  }
+  lines.push(
+    `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`
+  );
+  lines.push(
+    `  locks execution ${executionLock.state}${executionLock.pid ? ` (pid ${executionLock.pid})` : ""} \xB7 maintenance ${maintenanceLock.state}${maintenanceLock.pid ? ` (pid ${maintenanceLock.pid})` : ""}`
+  );
+  lines.push(
+    config2 ? "  next: engager-agent doctor" : "  next: engager-agent setup"
+  );
+  process.stdout.write(`${lines.join("\n")}
+`);
+}
+function pauseCommand(duration3) {
+  let until;
+  if (duration3) {
+    const milliseconds = parseDuration(duration3);
+    if (milliseconds == null) {
+      log(`could not parse duration "${duration3}" \u2014 use 30m, 2h, or 1d`);
+      process.exitCode = 1;
+      return;
+    }
+    until = Date.now() + milliseconds;
+  }
+  writePause(until);
+  log(`paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}`);
+}
+var REAL_RESUME_DEPS = {
+  resume: resumeAgentWithMaintenance,
+  clearHalt,
+  clearPause,
+  readStatus,
+  writeStatus,
+  now: Date.now,
+  output: log
+};
+function resumeCommand(deps = REAL_RESUME_DEPS) {
+  const result = deps.resume(() => {
+    deps.clearHalt();
+    deps.clearPause();
+    const status = deps.readStatus();
+    if (status) {
+      deps.writeStatus({
+        ...status,
+        quotaState: {
+          status: "available",
+          reasonCode: "manual_resume",
+          observedAt: deps.now()
+        }
+      });
+    }
+  });
+  deps.output(result.note);
+  if (!result.ok) process.exitCode = 1;
+}
+var REAL_STOP_DEPS = {
+  stop: stopAgentWithMaintenance,
+  output: log
+};
+function stopCommand(deps = REAL_STOP_DEPS) {
+  const result = deps.stop();
+  deps.output(result.note);
+  if (!result.ok) process.exitCode = 1;
+}
+function startCommand() {
+  const state = serviceState();
+  if (!shouldEnterServiceLifecycle(state.installed, hasUpgradeTransition())) return false;
+  const result = startServiceWithMaintenance();
+  log(result.note);
+  if (!result.ok) process.exitCode = 1;
+  return true;
+}
+function shouldEnterServiceLifecycle(serviceInstalled, transitionPending) {
+  return serviceInstalled || transitionPending;
+}
+function serviceCommand(action, version2) {
+  const result = action === "repair" ? upgradeAgent(version2) : action === "install" ? ensureServiceInstalledWithMaintenance(version2) : action === "uninstall" ? uninstallServiceWithMaintenance() : null;
+  if (action === "status") {
+    statusCommand(false);
+    return;
+  }
+  if (!result) {
+    log("usage: engager-agent service <install|repair|status|uninstall>");
+    process.exitCode = 1;
+    return;
+  }
+  log(result.note);
+  if (!result.ok) process.exitCode = 1;
+}
+function logsCommand(lines = 80) {
+  const directory = join9(agentHome(), "logs");
+  if (!existsSync7(directory)) {
+    process.stdout.write("No runner logs yet.\n");
+    return;
+  }
+  const files = readdirSync2(directory).filter((file) => file.endsWith(".log")).sort();
+  const latest = files.at(-1);
+  if (!latest) {
+    process.stdout.write("No runner logs yet.\n");
+    return;
+  }
+  const count = Number.isFinite(lines) ? Math.min(1e3, Math.max(1, Math.floor(lines))) : 80;
+  const safe = sanitizeLogText(readFileSync8(join9(directory, latest), "utf8"));
+  const tail = safe.split("\n").slice(-count);
+  process.stdout.write(`${tail.join("\n")}
+`);
+}
+function sanitizeLogText(value) {
+  const redacted = redact(value, [loadConfig()?.apiKey]).replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]").replace(/("?(?:api[_-]?key|token|secret)"?\s*[:=]\s*)"?[^\s",}]+"?/gi, "$1[REDACTED]");
+  return redacted.split(/\r?\n/).map((line) => sanitizeTerminalText(line)).join("\n");
+}
+function parseDuration(value) {
+  const match = /^(\d+(?:\.\d+)?)\s*(m|min|h|hr|d)$/i.exec(value.trim());
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const milliseconds = unit.startsWith("m") ? amount * 6e4 : unit.startsWith("h") ? amount * 36e5 : amount * 864e5;
+  return Number.isFinite(milliseconds) && milliseconds > 0 ? milliseconds : null;
+}
+var BOOLEAN_FLAGS = /* @__PURE__ */ new Set([
+  "--version",
+  "-v",
+  "--help",
+  "-h",
+  "--once",
+  "--service",
+  "--json",
+  "--repair",
+  "--reauthorize"
+]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["--for", "--tail", "--setup-proof-org"]);
+function findUnknownFlag(argv) {
+  for (let index = 0; index < argv.length; index++) {
+    const value = argv[index];
+    if (!value?.startsWith("-")) continue;
+    if (BOOLEAN_FLAGS.has(value)) continue;
+    if (VALUE_FLAGS.has(value)) {
+      index += 1;
+      continue;
+    }
+    return value;
+  }
+  return void 0;
+}
+
+// src/engines/claude.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
+import { spawnSync as spawnSync4 } from "node:child_process";
+
 // src/engine.ts
+import { fork, spawn, spawnSync as spawnSync3 } from "node:child_process";
+import { accessSync, constants as constants3, existsSync as existsSync8, realpathSync as realpathSync2 } from "node:fs";
+import { delimiter, dirname as dirname3, isAbsolute as isAbsolute3, join as join10 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 function resolveEngineExecutable(name, preferred) {
   let raw = preferred ?? "";
   if (!preferred) {
@@ -13627,10 +15687,10 @@ function resolveEngineExecutable(name, preferred) {
       raw = "";
     }
   }
-  if (!raw || !isAbsolute2(raw)) return null;
+  if (!raw || !isAbsolute3(raw)) return null;
   try {
     const path = realpathSync2(raw);
-    accessSync(path, constants2.X_OK);
+    accessSync(path, constants3.X_OK);
     if (/(?:^|\/)(?:_npx|\.hermes|Caches?|tmp|\.cache)(?:\/|$)/i.test(path)) return null;
     return path;
   } catch {
@@ -13782,13 +15842,13 @@ async function terminateKnownProcessGroup(pid, graceMs) {
 function resolveWatchdogPath(override) {
   const candidates = [
     override,
-    process.argv[1] ? join8(dirname3(realpathSync2(process.argv[1])), "engine-watchdog.mjs") : void 0,
+    process.argv[1] ? join10(dirname3(realpathSync2(process.argv[1])), "engine-watchdog.mjs") : void 0,
     fileURLToPath2(new URL("../bundle/engine-watchdog.mjs", import.meta.url))
   ];
   for (const candidate of candidates) {
-    if (!candidate || !existsSync7(candidate)) continue;
+    if (!candidate || !existsSync8(candidate)) continue;
     const path = realpathSync2(candidate);
-    accessSync(path, constants2.R_OK);
+    accessSync(path, constants3.R_OK);
     return path;
   }
   throw new Error("engine-watchdog.mjs was not found beside the runner bundle");
@@ -14034,125 +16094,6 @@ function strictStructuredOutputSchema(value) {
   result.required = Object.keys(properties);
   result.additionalProperties = false;
   return result;
-}
-
-// src/protocol.ts
-var RUNNER_SUPPORTED_VERSION = Object.freeze({
-  major: RUNNER_CONTRACT_MAJOR,
-  minor: RUNNER_CONTRACT_MINOR
-});
-var V1TriageSchema = external_exports.object({
-  toTriage: external_exports.number().int().nonnegative(),
-  topByReach: external_exports.number().int().nonnegative(),
-  random: external_exports.number().int().nonnegative()
-}).strict();
-var RunnerV1WorkOrderSchema = external_exports.object({
-  mode: external_exports.enum(["draft", "rank"]),
-  commentsToDraft: external_exports.number().int().nonnegative(),
-  candidatesToRank: external_exports.number().int().nonnegative(),
-  requestedDrafts: external_exports.number().int().nonnegative(),
-  pendingReplies: external_exports.number().int().nonnegative(),
-  triage: V1TriageSchema,
-  windowEndsAt: external_exports.number().int().nonnegative()
-}).strict();
-var RunnerV1DirectiveSchema = external_exports.object({
-  directive: external_exports.enum(["run", "idle", "stop"]),
-  reason: external_exports.string().min(1),
-  workOrder: RunnerV1WorkOrderSchema.nullable(),
-  intervalMinutes: external_exports.number().int().positive().nullable().optional(),
-  intervalMinutesBase: external_exports.number().int().positive().nullable().optional(),
-  // The compatibility server still includes its persisted heartbeat row. It
-  // is deliberately ignored by the executor but named here so parsing stays
-  // strict rather than accepting arbitrary forward fields.
-  runner: external_exports.unknown().optional()
-}).strict();
-function parseNegotiatedDirective(value) {
-  const v2 = RunnerDirectiveResponseSchema.safeParse(value);
-  if (v2.success) {
-    return {
-      protocol: "2.1",
-      directive: { ...v2.data, reason: sanitizeTerminalText(v2.data.reason) }
-    };
-  }
-  const directive = RunnerV1DirectiveSchema.parse(value);
-  return {
-    protocol: "v1",
-    directive: { ...directive, reason: sanitizeTerminalText(directive.reason) }
-  };
-}
-function classifyRunnerSurface(names) {
-  const actual = [...new Set(names)].sort();
-  const v2 = [...RUNNER_V2_TOOL_NAMES].sort();
-  if (sameStrings(actual, v2)) return "v2";
-  const v1 = [...RUNNER_V1_TOOL_NAMES].sort();
-  if (sameStrings(actual, v1)) return "v1-or-bootstrap";
-  throw new Error(
-    `runner credential tool surface mismatch (received ${actual.join(", ") || "no tools"})`
-  );
-}
-function sameStrings(left, right) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-var ProposalNote = external_exports.string().trim().min(1).max(400).optional();
-var TriageProposalSchema = external_exports.object({
-  lane: external_exports.literal("triage"),
-  items: external_exports.array(RunnerTriageItemSchema).min(1),
-  note: ProposalNote
-}).strict();
-var ToollessDraftItemSchema = RunnerDraftItemSchema.superRefine((item, ctx) => {
-  if (item.webSearched === true) {
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      path: ["webSearched"],
-      message: "tool-less runner output cannot claim web research"
-    });
-  }
-  if ((item.sources?.length ?? 0) > 0) {
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      path: ["sources"],
-      message: "tool-less runner output cannot attach external sources"
-    });
-  }
-});
-var DraftProposalFields = {
-  items: external_exports.array(ToollessDraftItemSchema).min(1),
-  note: ProposalNote
-};
-var DraftProposalSchema = external_exports.object({ lane: external_exports.literal("draft"), ...DraftProposalFields }).strict();
-var DiscoverDraftProposalSchema = external_exports.object({ lane: external_exports.literal("discover_draft"), ...DraftProposalFields }).strict();
-var ReplyProposalSchema = external_exports.object({
-  lane: external_exports.literal("reply"),
-  items: external_exports.array(RunnerReplyItemSchema).min(1),
-  note: ProposalNote
-}).strict();
-var AgentProposalSchema = external_exports.discriminatedUnion("lane", [
-  TriageProposalSchema,
-  DraftProposalSchema,
-  DiscoverDraftProposalSchema,
-  ReplyProposalSchema
-]);
-function parseAgentProposal(value, expectedLane) {
-  const proposal = AgentProposalSchema.parse(value);
-  if (proposal.lane !== expectedLane) {
-    throw new Error(`engine returned lane ${proposal.lane}; expected ${expectedLane}`);
-  }
-  return proposal;
-}
-function workOrderItemIds(order) {
-  return order.lane === "reply" ? [...order.input.incomingCommentIds] : [...order.input.candidateIds];
-}
-function contextUnprocessedIds(context) {
-  const value = context.receiptState.unprocessedFrozenIds;
-  if (!Array.isArray(value)) return [...context.requestedItemIds];
-  const ids = value.filter(
-    (item) => typeof item === "number" && Number.isSafeInteger(item) && item > 0
-  );
-  const frozen = new Set(context.frozenItemIds);
-  return ids.filter((id) => frozen.has(id));
-}
-function proposalItemId(proposal, item) {
-  return proposal.lane === "reply" ? item.incomingCommentId : item.candidateId;
 }
 
 // src/engines/claude.ts
@@ -14421,19 +16362,19 @@ function firstLine(value) {
 // src/engines/codex.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
 import {
-  chmodSync as chmodSync6,
-  closeSync as closeSync2,
-  constants as constants3,
-  fstatSync,
-  lstatSync as lstatSync3,
+  chmodSync as chmodSync7,
+  closeSync as closeSync3,
+  constants as constants4,
+  fstatSync as fstatSync2,
+  lstatSync as lstatSync6,
   mkdtempSync as mkdtempSync2,
-  openSync as openSync2,
+  openSync as openSync3,
   readSync,
-  rmSync as rmSync5,
+  rmSync as rmSync6,
   writeFileSync as writeFileSync4
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as join9 } from "node:path";
+import { join as join11 } from "node:path";
 var CODEX_CERTIFIED_VERSION = /^0\.135\./;
 var MAX_CODEX_RESULT_BYTES = 256 * 1024;
 var CODEX_DISABLED_FEATURES = [
@@ -14542,7 +16483,7 @@ var CodexEngine = class {
         detail: `unsupported Codex CLI ${version2 ?? "version"}; this closed-beta runner certifies 0.135.x`
       });
     }
-    const probeHome = mkdtempSync2(join9(tmpdir(), "engager-codex-probe-"));
+    const probeHome = mkdtempSync2(join11(tmpdir(), "engager-codex-probe-"));
     let featureDetail;
     try {
       const features = spawnSync5(executable, codexFeatureProbeArgs(), {
@@ -14554,7 +16495,7 @@ var CodexEngine = class {
       if (active == null) featureDetail = "Codex capability probe failed closed; this CLI output is not certified";
       else if (active.length > 0) featureDetail = `Codex has uncertified active capabilities: ${active.join(", ")}`;
     } finally {
-      rmSync5(probeHome, { recursive: true, force: true });
+      rmSync6(probeHome, { recursive: true, force: true });
     }
     if (featureDetail) {
       return this.cache({
@@ -14615,10 +16556,10 @@ ${auth2.stderr ?? ""}`;
         recovery: "Run `engager-agent setup` to pin a trusted Codex installation."
       });
     }
-    const schemaPath = join9(request.workingDirectory, "proposal.schema.json");
-    const resultPath = join9(request.workingDirectory, "proposal.json");
+    const schemaPath = join11(request.workingDirectory, "proposal.schema.json");
+    const resultPath = join11(request.workingDirectory, "proposal.json");
     writeFileSync4(schemaPath, JSON.stringify(codexProposalJsonSchema(request.lane)), { mode: 384 });
-    chmodSync6(schemaPath, 384);
+    chmodSync7(schemaPath, 384);
     const started = Date.now();
     const result = await runEngineProcess({
       command: executable,
@@ -14659,12 +16600,12 @@ ${auth2.stderr ?? ""}`;
 };
 function readCodexResultFile(path, maxBytes = MAX_CODEX_RESULT_BYTES) {
   try {
-    const link = lstatSync3(path);
+    const link = lstatSync6(path);
     if (!link.isFile() || link.isSymbolicLink()) throw new Error("result is not a regular file");
-    const noFollow = typeof constants3.O_NOFOLLOW === "number" ? constants3.O_NOFOLLOW : 0;
-    const fd = openSync2(path, constants3.O_RDONLY | noFollow);
+    const noFollow = typeof constants4.O_NOFOLLOW === "number" ? constants4.O_NOFOLLOW : 0;
+    const fd = openSync3(path, constants4.O_RDONLY | noFollow);
     try {
-      const stat = fstatSync(fd);
+      const stat = fstatSync2(fd);
       if (!stat.isFile() || stat.size > maxBytes) throw new Error("result exceeds the byte ceiling");
       const bytes = Buffer.alloc(maxBytes + 1);
       let total = 0;
@@ -14676,7 +16617,7 @@ function readCodexResultFile(path, maxBytes = MAX_CODEX_RESULT_BYTES) {
       if (total > maxBytes) throw new Error("result exceeded the byte ceiling while reading");
       return bytes.subarray(0, total).toString("utf8");
     } finally {
-      closeSync2(fd);
+      closeSync3(fd);
     }
   } catch (error2) {
     throw invalidOutput2(`Codex result must be a regular file no larger than ${maxBytes} bytes`, error2);
@@ -14760,154 +16701,6 @@ function engineFor(name, executablePath, configDir) {
   const engine = name === "codex" ? new CodexEngine(executablePath, configDir) : new ClaudeEngine(executablePath, configDir);
   ENGINES.set(key, engine);
   return engine;
-}
-
-// src/journal.ts
-import { createHash as createHash2, randomUUID as randomUUID5 } from "node:crypto";
-import { chmodSync as chmodSync7, lstatSync as lstatSync4, readFileSync as readFileSync7, rmSync as rmSync6 } from "node:fs";
-import { join as join10 } from "node:path";
-var JOURNAL_EXPIRY_SKEW_MS = 5 * 6e4;
-var SubmissionJournalSchema = external_exports.discriminatedUnion("tool", [
-  external_exports.object({ tool: external_exports.literal("runner_submit_triage"), input: RunnerSubmitTriageInputSchema }).strict(),
-  external_exports.object({ tool: external_exports.literal("runner_submit_batch"), input: RunnerSubmitBatchInputSchema }).strict(),
-  external_exports.object({ tool: external_exports.literal("runner_submit_replies"), input: RunnerSubmitRepliesInputSchema }).strict()
-]);
-var ActiveWorkJournalSchema = external_exports.object({
-  version: external_exports.literal(1),
-  runnerId: external_exports.string().min(1).max(200),
-  mcpUrl: external_exports.string().url().max(2e3),
-  credentialFingerprint: external_exports.string().regex(/^[a-f0-9]{64}$/),
-  savedAt: external_exports.number().int().nonnegative(),
-  leaseToken: external_exports.string().min(16).max(512),
-  leaseExpiresAt: external_exports.number().int().nonnegative().optional(),
-  claimClockSkewMs: external_exports.number().int().safe().optional(),
-  workOrder: RunnerWorkOrderSchema,
-  engineAttempt: external_exports.object({
-    id: external_exports.string().uuid(),
-    startedAt: external_exports.number().int().nonnegative(),
-    sessionDay: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-  }).strict().optional(),
-  cognition: external_exports.object({
-    proposal: AgentProposalSchema,
-    accounted: external_exports.boolean(),
-    model: external_exports.string().min(1).max(200).optional(),
-    durationMs: external_exports.number().int().nonnegative(),
-    usage: external_exports.object({ inputTokens: external_exports.number().int().nonnegative().optional(), outputTokens: external_exports.number().int().nonnegative().optional() }).strict().optional()
-  }).strict().optional(),
-  submission: SubmissionJournalSchema.optional(),
-  completion: RunnerCompleteWorkInputSchema.optional()
-}).strict();
-function journalPath() {
-  return join10(agentHome(), "active-work.json");
-}
-function readJournal() {
-  const path = journalPath();
-  let stat;
-  try {
-    stat = lstatSync4(path);
-  } catch (error2) {
-    if (error2.code === "ENOENT") return null;
-    throw error2;
-  }
-  const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
-  if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
-    throw new Error("active work journal is not a private regular file");
-  }
-  return ActiveWorkJournalSchema.parse(JSON.parse(readFileSync7(path, "utf8")));
-}
-function writeJournal(value) {
-  const parsed = ActiveWorkJournalSchema.parse({ ...value, savedAt: Date.now() });
-  writePrivateJsonDurably(journalPath(), parsed);
-  return parsed;
-}
-function startJournal(input) {
-  const journal = {
-    version: 1,
-    runnerId: input.runnerId,
-    mcpUrl: input.mcpUrl,
-    credentialFingerprint: input.credentialFingerprint,
-    savedAt: Date.now(),
-    leaseToken: input.leaseToken,
-    leaseExpiresAt: input.workOrder.leaseExpiresAt,
-    ...input.claimClockSkewMs != null ? { claimClockSkewMs: input.claimClockSkewMs } : {},
-    workOrder: input.workOrder
-  };
-  return writeJournal(journal);
-}
-function journalBinding(config2) {
-  return {
-    mcpUrl: new URL(config2.mcpUrl).toString(),
-    credentialFingerprint: createHash2("sha256").update(config2.apiKey).digest("hex")
-  };
-}
-function withJournalSubmission(journal, submission) {
-  const next = { ...journal, submission, completion: void 0 };
-  return writeJournal(next);
-}
-function withJournalLease(journal, leaseExpiresAt) {
-  return writeJournal({ ...journal, leaseExpiresAt });
-}
-function withJournalCognition(journal, cognition) {
-  return writeJournal({ ...journal, cognition });
-}
-function withJournalEngineAttempt(journal, engineAttempt) {
-  return writeJournal({ ...journal, engineAttempt });
-}
-function withJournalCompletion(journal, completion) {
-  const next = { ...journal, completion };
-  return writeJournal(next);
-}
-function clearJournal() {
-  rmSync6(journalPath(), { force: true });
-}
-function inspectJournal(now = Date.now()) {
-  try {
-    const journal = readJournal();
-    if (!journal) return { state: "absent" };
-    if (Math.abs(journal.claimClockSkewMs ?? 0) > 5 * 6e4) {
-      return {
-        state: "invalid",
-        detail: "active-work.json was claimed while the local clock was untrusted; reconcile it with the original credential after correcting the clock"
-      };
-    }
-    const terminalAt = Math.min(
-      Number.MAX_SAFE_INTEGER,
-      journal.workOrder.expiresAt + JOURNAL_EXPIRY_SKEW_MS
-    );
-    return {
-      state: now >= terminalAt ? "expired" : "active",
-      journal,
-      terminalAt
-    };
-  } catch {
-    return {
-      state: "invalid",
-      detail: "active-work.json is corrupt, unsafe, or not a private regular file"
-    };
-  }
-}
-function prepareSetupJournal(now = Date.now()) {
-  const inspection = inspectJournal(now);
-  if (inspection.state === "absent") return { state: "ready" };
-  if (inspection.state === "invalid") return { state: "blocked", reason: "invalid" };
-  if (inspection.state === "active") {
-    return { state: "blocked", reason: "active", terminalAt: inspection.terminalAt };
-  }
-  const destination = join10(
-    agentHome(),
-    `active-work.expired.${now}.${randomUUID5()}.json`
-  );
-  try {
-    renamePathDurably(journalPath(), destination);
-    chmodSync7(destination, 384);
-  } catch (error2) {
-    throw new RunnerFault("VALIDATION_REJECTED", "expired recovery journal could not be quarantined", {
-      impact: "Setup stopped before replacing the endpoint, credential, or engine.",
-      recovery: "Run `engager-agent doctor` and repair ~/.engager ownership/permissions before retrying setup.",
-      cause: error2
-    });
-  }
-  return { state: "quarantined", path: destination, terminalAt: inspection.terminalAt };
 }
 
 // node_modules/zod/v4/core/core.js
@@ -20480,8 +22273,8 @@ var Protocol = class {
                   if (queuedMessage.type === "response") {
                     resolver(message);
                   } else {
-                    const errorMessage = message;
-                    const error2 = new McpError(errorMessage.error.code, errorMessage.error.message, errorMessage.error.data);
+                    const errorMessage2 = message;
+                    const error2 = new McpError(errorMessage2.error.code, errorMessage2.error.message, errorMessage2.error.data);
                     resolver(error2);
                   }
                 } else {
@@ -21776,8 +23569,8 @@ var Client = class extends Protocol {
       const wrappedHandler = async (request, extra) => {
         const validatedRequest = safeParse2(ElicitRequestSchema, request);
         if (!validatedRequest.success) {
-          const errorMessage = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid elicitation request: ${errorMessage}`);
+          const errorMessage2 = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid elicitation request: ${errorMessage2}`);
         }
         const { params } = validatedRequest.data;
         params.mode = params.mode ?? "form";
@@ -21792,15 +23585,15 @@ var Client = class extends Protocol {
         if (params.task) {
           const taskValidationResult = safeParse2(CreateTaskResultSchema, result);
           if (!taskValidationResult.success) {
-            const errorMessage = taskValidationResult.error instanceof Error ? taskValidationResult.error.message : String(taskValidationResult.error);
-            throw new McpError(ErrorCode.InvalidParams, `Invalid task creation result: ${errorMessage}`);
+            const errorMessage2 = taskValidationResult.error instanceof Error ? taskValidationResult.error.message : String(taskValidationResult.error);
+            throw new McpError(ErrorCode.InvalidParams, `Invalid task creation result: ${errorMessage2}`);
           }
           return taskValidationResult.data;
         }
         const validationResult = safeParse2(ElicitResultSchema, result);
         if (!validationResult.success) {
-          const errorMessage = validationResult.error instanceof Error ? validationResult.error.message : String(validationResult.error);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid elicitation result: ${errorMessage}`);
+          const errorMessage2 = validationResult.error instanceof Error ? validationResult.error.message : String(validationResult.error);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid elicitation result: ${errorMessage2}`);
         }
         const validatedResult = validationResult.data;
         const requestedSchema = params.mode === "form" ? params.requestedSchema : void 0;
@@ -21820,16 +23613,16 @@ var Client = class extends Protocol {
       const wrappedHandler = async (request, extra) => {
         const validatedRequest = safeParse2(CreateMessageRequestSchema, request);
         if (!validatedRequest.success) {
-          const errorMessage = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid sampling request: ${errorMessage}`);
+          const errorMessage2 = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid sampling request: ${errorMessage2}`);
         }
         const { params } = validatedRequest.data;
         const result = await Promise.resolve(handler(request, extra));
         if (params.task) {
           const taskValidationResult = safeParse2(CreateTaskResultSchema, result);
           if (!taskValidationResult.success) {
-            const errorMessage = taskValidationResult.error instanceof Error ? taskValidationResult.error.message : String(taskValidationResult.error);
-            throw new McpError(ErrorCode.InvalidParams, `Invalid task creation result: ${errorMessage}`);
+            const errorMessage2 = taskValidationResult.error instanceof Error ? taskValidationResult.error.message : String(taskValidationResult.error);
+            throw new McpError(ErrorCode.InvalidParams, `Invalid task creation result: ${errorMessage2}`);
           }
           return taskValidationResult.data;
         }
@@ -21837,8 +23630,8 @@ var Client = class extends Protocol {
         const resultSchema = hasTools ? CreateMessageResultWithToolsSchema : CreateMessageResultSchema;
         const validationResult = safeParse2(resultSchema, result);
         if (!validationResult.success) {
-          const errorMessage = validationResult.error instanceof Error ? validationResult.error.message : String(validationResult.error);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid sampling result: ${errorMessage}`);
+          const errorMessage2 = validationResult.error instanceof Error ? validationResult.error.message : String(validationResult.error);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid sampling result: ${errorMessage2}`);
         }
         return validationResult.data;
       };
@@ -22558,8 +24351,8 @@ async function parseErrorResponse(input) {
     const errorClass = OAUTH_ERRORS[error2] || ServerError;
     return new errorClass(error_description || "", error_uri);
   } catch (error2) {
-    const errorMessage = `${statusCode ? `HTTP ${statusCode}: ` : ""}Invalid OAuth error response: ${error2}. Raw body: ${body}`;
-    return new ServerError(errorMessage);
+    const errorMessage2 = `${statusCode ? `HTTP ${statusCode}: ` : ""}Invalid OAuth error response: ${error2}. Raw body: ${body}`;
+    return new ServerError(errorMessage2);
   }
 }
 async function auth(provider, options) {
@@ -23944,22 +25737,22 @@ function requestSecrets(apiKey, args) {
 }
 
 // src/session-usage.ts
-import { randomUUID as randomUUID6 } from "node:crypto";
+import { randomUUID as randomUUID7 } from "node:crypto";
 import {
-  existsSync as existsSync8,
-  lstatSync as lstatSync5,
-  readFileSync as readFileSync8
+  existsSync as existsSync9,
+  lstatSync as lstatSync7,
+  readFileSync as readFileSync9
 } from "node:fs";
-import { join as join11 } from "node:path";
+import { join as join12 } from "node:path";
 var SessionUsageSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
   day: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   attemptIds: external_exports.array(external_exports.string().uuid()).max(100)
 }).strict();
 function sessionUsagePath() {
-  return join11(agentHome(), "session-usage.json");
+  return join12(agentHome(), "session-usage.json");
 }
-function reserveProviderSession(attemptId = randomUUID6(), startedAt = Date.now()) {
+function reserveProviderSession(attemptId = randomUUID7(), startedAt = Date.now()) {
   const id = external_exports.string().uuid().parse(attemptId);
   const day = utcDay(startedAt);
   const current = readUsage();
@@ -23979,14 +25772,14 @@ function utcDay(value) {
 }
 function readUsage() {
   const path = sessionUsagePath();
-  if (!existsSync8(path)) return null;
+  if (!existsSync9(path)) return null;
   try {
-    const stat = lstatSync5(path);
+    const stat = lstatSync7(path);
     const owned = typeof process.getuid !== "function" || stat.uid === process.getuid();
     if (!stat.isFile() || !owned || (stat.mode & 511) !== 384) {
       throw new Error("provider session ledger permissions are not private");
     }
-    return SessionUsageSchema.parse(JSON.parse(readFileSync8(path, "utf8")));
+    return SessionUsageSchema.parse(JSON.parse(readFileSync9(path, "utf8")));
   } catch (error2) {
     throw usageFault("provider session ledger is corrupt or unsafe", error2);
   }
@@ -24007,6 +25800,8 @@ function usageFault(message, cause) {
 async function runDoctor(config2, now = Date.now()) {
   const checks = [];
   addRecoveryCheck(checks, config2, now);
+  addLockChecks(checks, config2);
+  checks.push(diagnoseUpgradeTransition());
   try {
     const sessions = providerSessionsToday(now);
     checks.push({
@@ -24076,6 +25871,73 @@ async function runDoctor(config2, now = Date.now()) {
     ...service.installed && !service.entryExists ? { recovery: "Run `engager-agent service install --repair`." } : {}
   });
   return report(checks);
+}
+function diagnoseUpgradeTransition() {
+  try {
+    const transition = readUpgradeTransition();
+    if (!transition) {
+      return {
+        name: "upgrade-transition",
+        status: "pass",
+        detail: "no interrupted runtime or launchd transition"
+      };
+    }
+    return {
+      name: "upgrade-transition",
+      status: "fail",
+      detail: `interrupted runner ${transition.target.version} transition remains at phase ${transition.phase}`,
+      recovery: "Run `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start`; status and doctor are read-only."
+    };
+  } catch {
+    return {
+      name: "upgrade-transition",
+      status: "fail",
+      detail: "upgrade-transition.json is corrupt, unsafe, or not a private regular file",
+      recovery: "Preserve the journal and run `engager-agent service repair` or `engager-agent upgrade` after repairing ~/.engager ownership/permissions."
+    };
+  }
+}
+function addLockChecks(checks, config2) {
+  checks.push(
+    lockCheck(
+      "execution-lock",
+      diagnoseLock(inspectRunnerLock(config2?.runnerId ?? "global")),
+      "Run `engager-agent stop` if the verified process should exit; otherwise leave it running."
+    ),
+    lockCheck(
+      "maintenance-lock",
+      diagnoseLock(inspectMaintenanceLock()),
+      "Wait for the active lifecycle command; if it exited, rerun `engager-agent upgrade`, `engager-agent service repair`, or `engager-agent start`."
+    )
+  );
+}
+function lockCheck(name, diagnostic, activeRecovery) {
+  if (diagnostic.state === "absent") {
+    return { name, status: "pass", detail: diagnostic.detail };
+  }
+  const pid = diagnostic.pid ? ` (pid ${diagnostic.pid})` : "";
+  if (diagnostic.state === "active") {
+    return {
+      name,
+      status: "warn",
+      detail: `${diagnostic.detail}${pid}`,
+      recovery: activeRecovery
+    };
+  }
+  if (diagnostic.state === "stale") {
+    return {
+      name,
+      status: "warn",
+      detail: `${diagnostic.detail}${pid}`,
+      recovery: "Retry the intended command; it will recover only this structurally valid dead owner under an exclusive recovery guard."
+    };
+  }
+  return {
+    name,
+    status: "fail",
+    detail: `${diagnostic.detail}${pid}`,
+    recovery: "Preserve ~/.engager/locks; repair ownership or metadata only after proving no process owns the lock, then rerun doctor."
+  };
 }
 function addRecoveryCheck(checks, config2, now) {
   checks.push(diagnoseRecoveryJournal(config2, now));
@@ -24184,10 +26046,10 @@ async function controlPoll(config2, version2, state) {
 }
 
 // src/executor.ts
-import { createHash as createHash3, randomUUID as randomUUID7 } from "node:crypto";
+import { createHash as createHash4, randomUUID as randomUUID8 } from "node:crypto";
 import { chmodSync as chmodSync8, mkdtempSync as mkdtempSync3, rmSync as rmSync7 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 
 // src/prompt.ts
 var MAX_ENGINE_PROMPT_BYTES = 512 * 1024;
@@ -24439,12 +26301,20 @@ async function executeOneClaim(config2, mcp, engine, options = {}, deps = {}) {
 async function executeJournal(config2, mcp, engine, initial, recovering, options, journalStore, now, reserveSession) {
   let journal = initial;
   const order = journal.workOrder;
+  const finalizeCompletion = (completion) => {
+    finalizeCompletionJournal(
+      journalStore.clear,
+      order.purpose,
+      completion,
+      Boolean(config2.pendingSetupProofOrganizationId)
+    );
+  };
   const recoveredUnaccounted = journal.cognition?.accounted === false;
   if (journal.completion) {
     try {
       const completion = await mcp.complete(journal.completion);
       verifyCompletion(order, completion);
-      journalStore.clear();
+      finalizeCompletion(completion);
       return {
         ...completionOutcome(order, completion),
         ...recoveredUnaccounted ? { recoveredEngineAttempt: true } : {}
@@ -24488,7 +26358,7 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
       journal = journalStore.completion(journal, completionInput2);
       const completion2 = await mcp.complete(completionInput2);
       verifyCompletion(order, completion2, receipt2);
-      journalStore.clear();
+      finalizeCompletion(completion2);
       return {
         ...completionOutcome(order, completion2),
         ...recoveredUnaccounted ? { recoveredEngineAttempt: true } : {}
@@ -24527,7 +26397,7 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
           journal = journalStore.completion(journal, completionInput2);
           const completion2 = await mcp.complete(completionInput2);
           verifyCompletion(order, completion2);
-          journalStore.clear();
+          finalizeCompletion(completion2);
           return {
             ...completionOutcome(order, completion2),
             ok: false,
@@ -24535,12 +26405,12 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
             errorCode: promptTooLarge ? "ENGINE_CONTEXT_LIMIT" : "VALIDATION_REJECTED"
           };
         }
-        const directory = mkdtempSync3(join12(tmpdir2(), "engager-cognition-"));
+        const directory = mkdtempSync3(join13(tmpdir2(), "engager-cognition-"));
         chmodSync8(directory, 448);
         try {
           const startedAt = now();
           const attempt = {
-            id: randomUUID7(),
+            id: randomUUID8(),
             startedAt,
             sessionDay: new Date(startedAt).toISOString().slice(0, 10)
           };
@@ -24568,7 +26438,7 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
             journal = journalStore.completion(journal, completionInput2);
             const completion2 = await mcp.complete(completionInput2);
             verifyCompletion(order, completion2);
-            journalStore.clear();
+            finalizeCompletion(completion2);
             const terminal = completionOutcome(order, completion2);
             return {
               ...terminal,
@@ -24610,7 +26480,7 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
           journal = journalStore.completion(journal, completionInput2);
           const completion2 = await mcp.complete(completionInput2);
           verifyCompletion(order, completion2);
-          journalStore.clear();
+          finalizeCompletion(completion2);
           return {
             ...completionOutcome(order, completion2),
             ok: false,
@@ -24644,7 +26514,7 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
     journal = journalStore.completion(journal, completionInput);
     const completion = await mcp.complete(completionInput);
     verifyCompletion(order, completion, receipt ?? void 0);
-    journalStore.clear();
+    finalizeCompletion(completion);
     const outcome = completionOutcome(order, completion);
     return {
       ...outcome,
@@ -24658,6 +26528,10 @@ async function executeJournal(config2, mcp, engine, initial, recovering, options
   } finally {
     supervisor.stop();
   }
+}
+function finalizeCompletionJournal(clear, claimPurpose, completion, retainAcceptedSetupProof = false) {
+  const acceptedSetupProof = claimPurpose === "setup_proof" && completion?.status === "completed" && completion.result.failed === 0 && completion.result.unfinished === 0;
+  if (!acceptedSetupProof || !retainAcceptedSetupProof) clear();
 }
 function scopeProposal(order, context, proposal) {
   const remaining = contextUnprocessedIds(context);
@@ -24729,7 +26603,7 @@ function completionRequest(journal, note) {
   });
 }
 function idempotencyKey(order, stage, body) {
-  const digest = createHash3("sha256").update(JSON.stringify({ orderId: order.id, attempt: order.attempt, stage, body })).digest("hex").slice(0, 24);
+  const digest = createHash4("sha256").update(JSON.stringify({ orderId: order.id, attempt: order.attempt, stage, body })).digest("hex").slice(0, 24);
   return `runner-${stage}-${order.attempt}-${digest}`;
 }
 function verifyContext(order, context) {
@@ -25038,6 +26912,33 @@ async function runControlCycle(config2, version2, state, options = {}, deps = RE
         engine != null && isEngineReady(detection)
       );
     }
+    if (options.readinessOnly) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: upgradeBlocked ? {
+          ran: false,
+          ok: false,
+          note: directive.reason,
+          errorCode: "CONTRACT_UPGRADE_REQUIRED"
+        } : {
+          ran: false,
+          ok: true,
+          note: "upgrade handoff readiness verified; no work was claimed"
+        }
+      };
+    }
+    if (options.executionFence && !options.executionFence()) {
+      return {
+        protocol: negotiated.protocol,
+        quotaState,
+        outcome: {
+          ran: false,
+          ok: true,
+          note: "upgrade transition fenced execution; no work was claimed"
+        }
+      };
+    }
     const recoveryPending = deps.hasJournal();
     if (recoveryPending) {
       const canUseEngine = engine != null && isEngineReady(detection) && !localCapped && !quotaBlock && options.allowWork !== false;
@@ -25067,7 +26968,7 @@ async function runControlCycle(config2, version2, state, options = {}, deps = RE
           signal: options.signal,
           allowCognition: canUseEngine,
           cognitionFault,
-          canClaim: () => options.allowWork !== false && readPause() == null,
+          canClaim: () => options.allowWork !== false && readPause() == null && (options.executionFence?.() ?? true),
           ...options.claimPurpose ? { claimPurpose: options.claimPurpose } : {}
         })
       };
@@ -25135,7 +27036,7 @@ async function runControlCycle(config2, version2, state, options = {}, deps = RE
         quotaState,
         outcome: await deps.execute(config2, mcp, engine, {
           signal: options.signal,
-          canClaim: () => options.allowWork !== false && readPause() == null,
+          canClaim: () => options.allowWork !== false && readPause() == null && (options.executionFence?.() ?? true),
           ...options.claimPurpose ? { claimPurpose: options.claimPurpose } : {}
         })
       };
@@ -25178,6 +27079,33 @@ function quota(status, reasonCode, resetsAt) {
     ...resetsAt != null ? { resetsAt } : {}
   };
 }
+var MAINTENANCE_HANDOFF_TIMEOUT_MS = 15e3;
+var REAL_UPGRADE_COMMIT_WAIT_DEPS = {
+  pending: () => readUpgradeTransition() != null,
+  now: Date.now,
+  pause: sleep
+};
+async function waitForUpgradeTransitionCommit(timeoutMs = MAINTENANCE_HANDOFF_TIMEOUT_MS, deps = REAL_UPGRADE_COMMIT_WAIT_DEPS) {
+  const deadline = deps.now() + timeoutMs;
+  for (; ; ) {
+    try {
+      if (!deps.pending()) return { ok: true };
+    } catch (error2) {
+      return {
+        ok: false,
+        reason: `upgrade transition journal became unsafe: ${error2 instanceof Error ? error2.message : String(error2)}`
+      };
+    }
+    const remaining = deadline - deps.now();
+    if (remaining <= 0) {
+      return {
+        ok: false,
+        reason: "upgrade transition was not committed before the maintenance handoff timeout"
+      };
+    }
+    await deps.pause(Math.min(100, remaining));
+  }
+}
 async function runLoop(config2, options = {}) {
   const service = options.service ?? false;
   const version2 = options.version ?? "0";
@@ -25195,6 +27123,7 @@ async function runLoop(config2, options = {}) {
   let quotaState = prior?.quotaState;
   let stopping = null;
   let activeAbort = null;
+  let maintenanceHandoff = options.maintenanceHandoff === true;
   const put = (state, reason, nextPollAt) => writeStatus({
     schemaVersion: 2,
     pid: process.pid,
@@ -25217,11 +27146,12 @@ async function runLoop(config2, options = {}) {
     ...nextPollAt != null ? { nextPollAt } : {},
     ...quotaState ? { quotaState } : {}
   });
-  const safeTerminalHeartbeat = async (state) => {
+  const safeTerminalHeartbeat = async (state, reason) => {
+    const terminalCycle = reason ? upgradeHandoffStoppedCycle(reason) : lastCycle;
     try {
       await controlPoll(config2, version2, {
         state,
-        ...lastCycle ? { lastCycle } : {},
+        ...terminalCycle ? { lastCycle: terminalCycle } : {},
         consecutiveFailures,
         sessionsToday,
         quotaState
@@ -25235,6 +27165,12 @@ async function runLoop(config2, options = {}) {
     await safeTerminalHeartbeat("halted");
     log(`HALTED: ${reason} \u2014 run \`engager-agent doctor\`, then \`engager-agent resume\``);
     process.exit(service ? 0 : 1);
+  };
+  const stopForUpgradeTransition = async (reason) => {
+    lastCycle = upgradeHandoffStoppedCycle(reason);
+    put("stopped", reason);
+    await safeTerminalHeartbeat("stopped", reason);
+    log(`upgrade transition fenced runner safely: ${reason}`);
   };
   const existingHalt = readHalt();
   if (existingHalt) {
@@ -25258,6 +27194,13 @@ async function runLoop(config2, options = {}) {
       log(`received ${stopping} \u2014 clean shutdown`);
       process.exit(0);
     }
+    if (!maintenanceHandoff) {
+      const transitionReason2 = upgradeTransitionBlockReason();
+      if (transitionReason2) {
+        await stopForUpgradeTransition(transitionReason2);
+        return;
+      }
+    }
     if (today() !== sessionDay) {
       sessionDay = today();
       sessionsToday = providerSessionsToday();
@@ -25280,7 +27223,9 @@ async function runLoop(config2, options = {}) {
           quotaState
         },
         {
-          allowWork: !pause,
+          allowWork: !pause && !maintenanceHandoff,
+          readinessOnly: maintenanceHandoff,
+          executionFence: () => readUpgradeTransition() == null,
           signal: activeAbort.signal,
           onNegotiated: (negotiatedProtocol, negotiatedQuotaState, engineReady) => {
             const verifiedAt = Date.now();
@@ -25328,6 +27273,27 @@ async function runLoop(config2, options = {}) {
     } finally {
       activeAbort = null;
       sessionsToday = providerSessionsToday();
+    }
+    if (maintenanceHandoff) {
+      const commit = await waitForUpgradeTransitionCommit(
+        options.handoffTimeoutMs,
+        options.handoffWaitDeps
+      );
+      if (!commit.ok) {
+        lastCycle = upgradeHandoffStoppedCycle(commit.reason);
+        put("stopped", commit.reason);
+        await safeTerminalHeartbeat("stopped", commit.reason);
+        log(`upgrade handoff stopped safely: ${commit.reason}`);
+        return;
+      }
+      maintenanceHandoff = false;
+      log("upgrade transition committed \u2014 normal work is now enabled");
+      continue;
+    }
+    const transitionReason = upgradeTransitionBlockReason();
+    if (transitionReason) {
+      await stopForUpgradeTransition(transitionReason);
+      return;
     }
     if (stopping) continue;
     if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
@@ -25386,6 +27352,23 @@ function cycleInfoFromOutcome(outcome, at = Date.now()) {
       }
     } : {}
   };
+}
+function upgradeHandoffStoppedCycle(reason, at = Date.now()) {
+  return {
+    at,
+    ran: false,
+    ok: false,
+    note: sanitizeTerminalText(reason).slice(0, 400),
+    errorCode: "INTERNAL_ERROR"
+  };
+}
+function upgradeTransitionBlockReason() {
+  try {
+    const transition = readUpgradeTransition();
+    return transition ? `upgrade transition ${transition.target.version} remains pending at ${transition.phase}` : null;
+  } catch (error2) {
+    return `upgrade transition journal is unsafe: ${error2 instanceof Error ? error2.message : String(error2)}`;
+  }
 }
 function activeQuotaBlock(value) {
   if (!value || typeof value.resetsAt !== "number" || value.resetsAt <= Date.now()) return null;
@@ -26033,17 +28016,17 @@ var Y2 = ({ indicator: t = "dots" } = {}) => {
 };
 
 // src/detect.ts
-import { existsSync as existsSync9, readFileSync as readFileSync9 } from "node:fs";
+import { existsSync as existsSync10, readFileSync as readFileSync10 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
-import { join as join14 } from "node:path";
+import { join as join15 } from "node:path";
 
 // src/register.ts
 import { homedir as homedir3 } from "node:os";
-import { join as join13 } from "node:path";
+import { join as join14 } from "node:path";
 var MCP_NAME = "engager";
 function desktopConfigPath() {
   if (process.platform !== "darwin") return null;
-  return join13(homedir3(), "Library", "Application Support", "Claude", "claude_desktop_config.json");
+  return join14(homedir3(), "Library", "Application Support", "Claude", "claude_desktop_config.json");
 }
 
 // src/detect.ts
@@ -26114,15 +28097,15 @@ async function detectEndpoints(existing) {
   }
   try {
     const path = desktopConfigPath();
-    if (path && existsSync9(path)) {
-      found.push(desktopEndpoint(JSON.parse(readFileSync9(path, "utf8"))));
+    if (path && existsSync10(path)) {
+      found.push(desktopEndpoint(JSON.parse(readFileSync10(path, "utf8"))));
     }
   } catch {
   }
   try {
-    const codePath = join14(homedir4(), ".claude.json");
-    if (existsSync9(codePath)) {
-      found.push(codeConfigEndpoint(JSON.parse(readFileSync9(codePath, "utf8"))));
+    const codePath = join15(homedir4(), ".claude.json");
+    if (existsSync10(codePath)) {
+      found.push(codeConfigEndpoint(JSON.parse(readFileSync10(codePath, "utf8"))));
     }
   } catch {
   }
@@ -26150,9 +28133,6 @@ var DeviceStartResponseSchema = external_exports.object({
   purpose: external_exports.literal("runner_setup_proof").optional(),
   organizationId: external_exports.string().uuid().optional()
 }).strict();
-function isValidSetupProofOrganizationId(value) {
-  return external_exports.string().uuid().safeParse(value).success;
-}
 var DevicePollResponseSchema = external_exports.discriminatedUnion("status", [
   external_exports.object({ status: external_exports.enum(["pending", "denied", "expired", "not_found"]) }).strict(),
   external_exports.object({
@@ -26452,6 +28432,32 @@ function openBrowser(url2, spawnProcess = spawn2) {
 }
 
 // src/wizard.ts
+function settleAcceptedSetupProof(config2, deps = { save: saveConfig, clearJournal }) {
+  if (!config2.pendingSetupProofOrganizationId) return config2;
+  const settled = withoutPendingSetupProof(config2);
+  deps.save(settled);
+  deps.clearJournal();
+  return settled;
+}
+function planSetupCredential(existing, options) {
+  const setupProofOrganizationId = (options.setupProofOrganizationId ?? existing?.pendingSetupProofOrganizationId)?.toLowerCase();
+  const existingSetupProofOrganizationId = existing?.pendingSetupProofOrganizationId?.toLowerCase();
+  const exactProtectedRetry = Boolean(
+    setupProofOrganizationId && existingSetupProofOrganizationId === setupProofOrganizationId
+  );
+  const reusingExistingCredential = Boolean(
+    existing?.apiKey && !options.reauthorize && (!setupProofOrganizationId || exactProtectedRetry)
+  );
+  return {
+    ...setupProofOrganizationId ? { setupProofOrganizationId } : {},
+    reusingExistingCredential,
+    replacingCredential: Boolean(existing?.apiKey && !reusingExistingCredential)
+  };
+}
+function canReuseDetectedCredential(apiKey, existing, setupProofOrganizationId) {
+  if (!setupProofOrganizationId) return true;
+  return existing?.apiKey === apiKey && existing.pendingSetupProofOrganizationId?.toLowerCase() === setupProofOrganizationId.toLowerCase();
+}
 async function runWizard(existing, options = {}) {
   Ie("engager-agent setup \u2014 private Claude/Codex executor");
   if (process.platform === "win32") {
@@ -26461,7 +28467,8 @@ async function runWizard(existing, options = {}) {
     Se("No Engager credential was requested or stored. Use macOS or Linux for this release.");
     return null;
   }
-  if (options.setupProofOrganizationId !== void 0 && !isValidSetupProofOrganizationId(options.setupProofOrganizationId)) {
+  const initialSetupProofOrganizationId = options.setupProofOrganizationId ?? existing?.pendingSetupProofOrganizationId;
+  if (initialSetupProofOrganizationId !== void 0 && !isValidSetupProofOrganizationId(initialSetupProofOrganizationId)) {
     M2.error("The setup-proof project id is not a valid UUID.");
     Se("No Engager credential was requested or stored.");
     return null;
@@ -26486,11 +28493,8 @@ async function runWizard(existing, options = {}) {
         return null;
       }
       if (status === "acknowledged") {
-        const { pendingDeviceAck: _pending, ...finalized } = existing;
-        savePartialConfig(finalized);
-        const loaded = loadConfig();
+        const loaded = finalizeAcknowledgedDeviceConfig(existing);
         if (!loaded) {
-          savePartialConfig(existing);
           recovery.stop("ACK succeeded, but the saved runner configuration is incomplete.");
           Se("Repair the private setup state and rerun setup; the ACK is idempotent.");
           return null;
@@ -26548,12 +28552,12 @@ async function runWizard(existing, options = {}) {
         "The prior work order is past its hard expiry plus clock-skew margin; its private journal was quarantined before credential rotation."
       );
     }
-    const replacingCredential = Boolean(
-      existing?.apiKey && (options.reauthorize || options.setupProofOrganizationId)
-    );
+    const credentialPlan = planSetupCredential(existing, options);
+    const setupProofOrganizationId = credentialPlan.setupProofOrganizationId;
+    const replacingCredential = credentialPlan.replacingCredential;
     if (replacingCredential && existing?.apiKey) {
       Me(
-        options.setupProofOrganizationId ? "This protected setup needs a project- and purpose-bound owner approval. Revoke the current general runner credential in Engager Settings before continuing; setup cannot upgrade or revoke it with runner:execute authority." : "Engager permits one active runner credential per runner identity. Revoke the old credential in Engager Settings before continuing; setup cannot revoke it with runner:execute authority.",
+        setupProofOrganizationId ? "This protected setup requires a new project- and purpose-bound owner approval. Revoke the current runner credential in Engager Settings before continuing; setup cannot replace or revoke it with runner:execute authority." : "Engager permits one active runner credential per runner identity. Revoke the old credential in Engager Settings before continuing; setup cannot revoke it with runner:execute authority.",
         "Credential rotation"
       );
       const revoked = must(
@@ -26564,7 +28568,7 @@ async function runWizard(existing, options = {}) {
       );
       if (!revoked) {
         Se(
-          options.setupProofOrganizationId ? "No credential was changed. Revoke the old key, then rerun the protected setup command." : "No credential was changed. Revoke the old key, then rerun setup --reauthorize."
+          setupProofOrganizationId ? "No credential was changed. Revoke the old key, then rerun the protected setup command." : "No credential was changed. Revoke the old key, then rerun setup --reauthorize."
         );
         return null;
       }
@@ -26586,7 +28590,11 @@ async function runWizard(existing, options = {}) {
           options: [
             ...detected.map((endpoint2, index) => ({
               value: index,
-              label: `${endpoint2.url} \u2014 ${describeSource(endpoint2)}${endpoint2.apiKey && !replacingCredential && !options.setupProofOrganizationId && !rejectedKeys.has(endpoint2.apiKey) ? " (dedicated key found)" : ""}`
+              label: `${endpoint2.url} \u2014 ${describeSource(endpoint2)}${endpoint2.apiKey && !replacingCredential && canReuseDetectedCredential(
+                endpoint2.apiKey,
+                existing,
+                setupProofOrganizationId
+              ) && !rejectedKeys.has(endpoint2.apiKey) ? " (dedicated key found)" : ""}`
             })),
             { value: manual, label: "Other \u2014 enter a URL" }
           ]
@@ -26613,13 +28621,17 @@ async function runWizard(existing, options = {}) {
       }
       mcpUrl = endpoint.url;
       pendingGrant = null;
-      if (endpoint.apiKey && !replacingCredential && !options.setupProofOrganizationId && !rejectedKeys.has(endpoint.apiKey)) {
+      if (endpoint.apiKey && !replacingCredential && canReuseDetectedCredential(
+        endpoint.apiKey,
+        existing,
+        setupProofOrganizationId
+      ) && !rejectedKeys.has(endpoint.apiKey)) {
         apiKey = endpoint.apiKey;
       } else {
         pendingGrant = await acquireKey(
           mcpUrl,
           runnerId,
-          options.setupProofOrganizationId
+          setupProofOrganizationId
         );
         apiKey = pendingGrant.apiKey;
       }
@@ -26636,6 +28648,7 @@ async function runWizard(existing, options = {}) {
         maxTurns: CONFIG_DEFAULTS.maxTurns,
         dailySessionCap: existing?.dailySessionCap ?? CONFIG_DEFAULTS.dailySessionCap,
         sessionTimeoutMinutes: existing?.sessionTimeoutMinutes ?? CONFIG_DEFAULTS.sessionTimeoutMinutes,
+        ...setupProofOrganizationId ? { pendingSetupProofOrganizationId: setupProofOrganizationId } : {},
         ...existing?.legacy ? { legacy: existing.legacy } : {}
       };
       if (pendingGrant) {
@@ -26698,7 +28711,7 @@ async function runWizard(existing, options = {}) {
       }
     }
     const model = await selectModel(engine, existing?.model);
-    const config2 = {
+    let config2 = {
       configVersion: 2,
       mcpUrl,
       apiKey,
@@ -26711,6 +28724,7 @@ async function runWizard(existing, options = {}) {
       maxTurns: CONFIG_DEFAULTS.maxTurns,
       dailySessionCap: existing?.dailySessionCap ?? CONFIG_DEFAULTS.dailySessionCap,
       sessionTimeoutMinutes: existing?.sessionTimeoutMinutes ?? CONFIG_DEFAULTS.sessionTimeoutMinutes,
+      ...setupProofOrganizationId ? { pendingSetupProofOrganizationId: setupProofOrganizationId } : {},
       ...existing?.legacy ? { legacy: existing.legacy } : {}
     };
     saveConfig(config2);
@@ -26733,14 +28747,20 @@ async function runWizard(existing, options = {}) {
           consecutiveFailures: 0,
           sessionsToday: providerSessionsToday()
         }, { claimPurpose: "setup_proof" });
-        proofAccepted = isAcceptedSetupProof(result.outcome);
-        if (proofAccepted) M2.success(`Proof accepted \u2014 ${result.outcome.note}`);
-        else M2.warn(`No accepted proof yet \u2014 ${result.outcome.note}`);
+        const accepted = isAcceptedSetupProof(result.outcome);
+        if (accepted) {
+          if (config2.pendingSetupProofOrganizationId) {
+            config2 = settleAcceptedSetupProof(config2);
+          }
+          proofAccepted = true;
+          M2.success(`Proof accepted \u2014 ${result.outcome.note}`);
+        } else M2.warn(`No accepted proof yet \u2014 ${result.outcome.note}`);
       } catch (error2) {
         M2.error(formatRunnerFault(error2));
       }
     }
     if (proofAccepted && process.platform === "darwin") {
+      setupLock.release();
       const install = must(
         await ye({
           message: "Install the verified versioned runner as a background service?",
@@ -26748,7 +28768,7 @@ async function runWizard(existing, options = {}) {
         })
       );
       if (install) {
-        const result = installService(AGENT_VERSION);
+        const result = installServiceWithMaintenance(AGENT_VERSION);
         result.ok ? M2.success(result.note) : M2.error(result.note);
       }
     } else if (!proofAccepted) {
@@ -26899,8 +28919,9 @@ var USAGE = `engager-agent \u2014 least-privilege Engager runner
   engager-agent run --once              claim at most one server-authored work order
   engager-agent service install         install verified versioned launchd payload (macOS)
   engager-agent service repair          repair the durable service entry
-  engager-agent service status          service and runner status
+  engager-agent service status          read-only service/transition status
   engager-agent service uninstall       remove autostart; preserve config/runtime
+  npx engager-agent@latest upgrade       activate verified latest payload; repair service
   engager-agent logs [--tail N]         sanitized recent local logs
   engager-agent pause [--for 2h]        pause local claims
   engager-agent resume                  clear pause/halt and restart installed service
@@ -26977,6 +28998,12 @@ ${USAGE}`);
     case "service":
       serviceCommand(argv[1] === "install" && has("--repair") ? "repair" : argv[1], AGENT_VERSION);
       return;
+    case "upgrade": {
+      const result = upgradeAgent(AGENT_VERSION);
+      log(result.note);
+      if (!result.ok) process.exitCode = 1;
+      return;
+    }
     case "logs":
       logsCommand(Number(value("--tail") ?? 80));
       return;
@@ -27017,11 +29044,24 @@ async function runForeground(service) {
     }
     throw new Error("RUNNER_NOT_CONFIGURED: run `engager-agent setup`");
   }
+  if (config2.pendingSetupProofOrganizationId) {
+    const message = "SETUP_PROOF_PENDING: run `engager-agent run --once` to claim or reconcile the exact setup proof before production polling";
+    if (service) {
+      log(message);
+      return;
+    }
+    throw new Error(message);
+  }
+  const maintenanceHandoff = service && Boolean(process.env[MAINTENANCE_TOKEN_ENV]);
   const lock = acquireRunnerLock(config2.runnerId);
   const release = () => lock.release();
   process.once("exit", release);
   try {
-    await runLoop(config2, { service, version: AGENT_VERSION });
+    await runLoop(config2, {
+      service,
+      version: AGENT_VERSION,
+      maintenanceHandoff
+    });
   } finally {
     process.off("exit", release);
     lock.release();
@@ -27034,6 +29074,8 @@ var REAL_RUN_ONCE_DEPS = {
   status: readStatus,
   lock: acquireRunnerLock,
   cycle: runControlCycle,
+  save: saveConfig,
+  clearProofJournal: clearJournal,
   persist: writeStatus,
   terminal: controlPoll,
   markHalt: writeHalt,
@@ -27078,12 +29120,22 @@ async function runOnce(deps = REAL_RUN_ONCE_DEPS) {
           sessionsToday,
           ...quotaState ? { quotaState } : {}
         },
-        { allowWork: !pause, signal: controller.signal }
+        {
+          allowWork: !pause,
+          signal: controller.signal,
+          ...config2.pendingSetupProofOrganizationId ? { claimPurpose: "setup_proof" } : {}
+        }
       );
       protocol = result.protocol;
       protocolVerifiedAt = Date.now();
       quotaState = result.quotaState;
       const outcome = result.outcome;
+      if (config2.pendingSetupProofOrganizationId && isAcceptedSetupProof(outcome)) {
+        settleAcceptedSetupProof(config2, {
+          save: deps.save,
+          clearJournal: deps.clearProofJournal
+        });
+      }
       cycle = cycleInfoFromOutcome(outcome);
       fatal = outcome.fatal === true;
       if (outcome.ok) consecutiveFailures = 0;
@@ -27158,6 +29210,7 @@ function isDirectInvocation() {
   }
 }
 export {
+  USAGE,
   main,
   runForeground,
   runOnce,

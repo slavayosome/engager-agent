@@ -4,12 +4,13 @@ import {
   createRunnerId,
   engineConfigDirFromEnvironment,
   engineConfigEnvironmentName,
+  finalizeAcknowledgedDeviceConfig,
   isSafeEngineConfigDir,
   isSafeMcpUrl,
   isValidRunnerId,
-  loadConfig,
   saveConfig,
   savePartialConfig,
+  withoutPendingSetupProof,
   type AgentConfig,
   type PendingDeviceAck,
 } from "./config.js";
@@ -28,12 +29,75 @@ import type { EngineDetection, EngineName } from "./engine.js";
 import { asRunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
 import type { ExecutionOutcome } from "./executor.js";
 import { runControlCycle } from "./loop.js";
-import { prepareSetupJournal } from "./journal.js";
+import { clearJournal, prepareSetupJournal } from "./journal.js";
 import { acquireRunnerLock } from "./lock.js";
 import { EngagerMcp } from "./mcp.js";
-import { installService } from "./service.js";
+import { installServiceWithMaintenance } from "./upgrade.js";
 import { AGENT_VERSION } from "./version.js";
 import { providerSessionsToday } from "./session-usage.js";
+
+export type SetupCredentialPlan = {
+  setupProofOrganizationId?: string;
+  reusingExistingCredential: boolean;
+  replacingCredential: boolean;
+};
+
+export function settleAcceptedSetupProof(
+  config: AgentConfig,
+  deps: {
+    save: typeof saveConfig;
+    clearJournal: typeof clearJournal;
+  } = { save: saveConfig, clearJournal },
+): AgentConfig {
+  if (!config.pendingSetupProofOrganizationId) return config;
+  const settled = withoutPendingSetupProof(config);
+  deps.save(settled);
+  deps.clearJournal();
+  return settled;
+}
+
+/** A protected retry may reuse only the exact locally-bound credential. A
+ * different project, a general credential, or explicit reauthorization still
+ * requires owner-confirmed rotation. */
+export function planSetupCredential(
+  existing: Pick<Partial<AgentConfig>, "apiKey" | "pendingSetupProofOrganizationId"> | undefined,
+  options: { reauthorize?: boolean; setupProofOrganizationId?: string },
+): SetupCredentialPlan {
+  const setupProofOrganizationId =
+    (
+      options.setupProofOrganizationId ??
+      existing?.pendingSetupProofOrganizationId
+    )?.toLowerCase();
+  const existingSetupProofOrganizationId =
+    existing?.pendingSetupProofOrganizationId?.toLowerCase();
+  const exactProtectedRetry = Boolean(
+    setupProofOrganizationId &&
+      existingSetupProofOrganizationId === setupProofOrganizationId,
+  );
+  const reusingExistingCredential = Boolean(
+    existing?.apiKey &&
+      !options.reauthorize &&
+      (!setupProofOrganizationId || exactProtectedRetry),
+  );
+  return {
+    ...(setupProofOrganizationId ? { setupProofOrganizationId } : {}),
+    reusingExistingCredential,
+    replacingCredential: Boolean(existing?.apiKey && !reusingExistingCredential),
+  };
+}
+
+function canReuseDetectedCredential(
+  apiKey: string,
+  existing: Pick<Partial<AgentConfig>, "apiKey" | "pendingSetupProofOrganizationId"> | undefined,
+  setupProofOrganizationId?: string,
+): boolean {
+  if (!setupProofOrganizationId) return true;
+  return (
+    existing?.apiKey === apiKey &&
+    existing.pendingSetupProofOrganizationId?.toLowerCase() ===
+      setupProofOrganizationId.toLowerCase()
+  );
+}
 
 export async function runWizard(
   existing?: Partial<AgentConfig> & { pendingDeviceAck?: PendingDeviceAck },
@@ -50,9 +114,11 @@ export async function runWizard(
     p.outro("No Engager credential was requested or stored. Use macOS or Linux for this release.");
     return null;
   }
+  const initialSetupProofOrganizationId =
+    options.setupProofOrganizationId ?? existing?.pendingSetupProofOrganizationId;
   if (
-    options.setupProofOrganizationId !== undefined &&
-    !isValidSetupProofOrganizationId(options.setupProofOrganizationId)
+    initialSetupProofOrganizationId !== undefined &&
+    !isValidSetupProofOrganizationId(initialSetupProofOrganizationId)
   ) {
     p.log.error("The setup-proof project id is not a valid UUID.");
     p.outro("No Engager credential was requested or stored.");
@@ -78,11 +144,8 @@ export async function runWizard(
         return null;
       }
       if (status === "acknowledged") {
-        const { pendingDeviceAck: _pending, ...finalized } = existing;
-        savePartialConfig(finalized);
-        const loaded = loadConfig();
+        const loaded = finalizeAcknowledgedDeviceConfig(existing);
         if (!loaded) {
-          savePartialConfig(existing);
           recovery.stop("ACK succeeded, but the saved runner configuration is incomplete.");
           p.outro("Repair the private setup state and rerun setup; the ACK is idempotent.");
           return null;
@@ -157,14 +220,13 @@ export async function runWizard(
         "The prior work order is past its hard expiry plus clock-skew margin; its private journal was quarantined before credential rotation.",
       );
     }
-  const replacingCredential = Boolean(
-    existing?.apiKey &&
-      (options.reauthorize || options.setupProofOrganizationId),
-  );
+  const credentialPlan = planSetupCredential(existing, options);
+  const setupProofOrganizationId = credentialPlan.setupProofOrganizationId;
+  const replacingCredential = credentialPlan.replacingCredential;
   if (replacingCredential && existing?.apiKey) {
     p.note(
-      options.setupProofOrganizationId
-        ? "This protected setup needs a project- and purpose-bound owner approval. Revoke the current general runner credential in Engager Settings before continuing; setup cannot upgrade or revoke it with runner:execute authority."
+      setupProofOrganizationId
+        ? "This protected setup requires a new project- and purpose-bound owner approval. Revoke the current runner credential in Engager Settings before continuing; setup cannot replace or revoke it with runner:execute authority."
         : "Engager permits one active runner credential per runner identity. Revoke the old credential in Engager Settings before continuing; setup cannot revoke it with runner:execute authority.",
       "Credential rotation",
     );
@@ -176,7 +238,7 @@ export async function runWizard(
     );
     if (!revoked) {
       p.outro(
-        options.setupProofOrganizationId
+        setupProofOrganizationId
           ? "No credential was changed. Revoke the old key, then rerun the protected setup command."
           : "No credential was changed. Revoke the old key, then rerun setup --reauthorize.",
       );
@@ -204,7 +266,11 @@ export async function runWizard(
             label: `${endpoint.url} — ${describeSource(endpoint)}${
               endpoint.apiKey &&
               !replacingCredential &&
-              !options.setupProofOrganizationId &&
+              canReuseDetectedCredential(
+                endpoint.apiKey,
+                existing,
+                setupProofOrganizationId,
+              ) &&
               !rejectedKeys.has(endpoint.apiKey)
                 ? " (dedicated key found)"
                 : ""
@@ -240,7 +306,11 @@ export async function runWizard(
     if (
       endpoint.apiKey &&
       !replacingCredential &&
-      !options.setupProofOrganizationId &&
+      canReuseDetectedCredential(
+        endpoint.apiKey,
+        existing,
+        setupProofOrganizationId,
+      ) &&
       !rejectedKeys.has(endpoint.apiKey)
     ) {
       apiKey = endpoint.apiKey;
@@ -248,7 +318,7 @@ export async function runWizard(
       pendingGrant = await acquireKey(
         mcpUrl,
         runnerId,
-        options.setupProofOrganizationId,
+        setupProofOrganizationId,
       );
       apiKey = pendingGrant.apiKey;
     }
@@ -271,6 +341,9 @@ export async function runWizard(
       dailySessionCap: existing?.dailySessionCap ?? CONFIG_DEFAULTS.dailySessionCap,
       sessionTimeoutMinutes:
         existing?.sessionTimeoutMinutes ?? CONFIG_DEFAULTS.sessionTimeoutMinutes,
+      ...(setupProofOrganizationId
+        ? { pendingSetupProofOrganizationId: setupProofOrganizationId }
+        : {}),
       ...(existing?.legacy ? { legacy: existing.legacy } : {}),
     };
     if (pendingGrant) {
@@ -338,7 +411,7 @@ export async function runWizard(
   }
 
   const model = await selectModel(engine, existing?.model);
-  const config: AgentConfig = {
+  let config: AgentConfig = {
     configVersion: 2,
     mcpUrl,
     apiKey,
@@ -354,6 +427,9 @@ export async function runWizard(
     dailySessionCap: existing?.dailySessionCap ?? CONFIG_DEFAULTS.dailySessionCap,
     sessionTimeoutMinutes:
       existing?.sessionTimeoutMinutes ?? CONFIG_DEFAULTS.sessionTimeoutMinutes,
+    ...(setupProofOrganizationId
+      ? { pendingSetupProofOrganizationId: setupProofOrganizationId }
+      : {}),
     ...(existing?.legacy ? { legacy: existing.legacy } : {}),
   };
   saveConfig(config);
@@ -377,8 +453,14 @@ export async function runWizard(
         consecutiveFailures: 0,
         sessionsToday: providerSessionsToday(),
       }, { claimPurpose: "setup_proof" });
-      proofAccepted = isAcceptedSetupProof(result.outcome);
-      if (proofAccepted) p.log.success(`Proof accepted — ${result.outcome.note}`);
+      const accepted = isAcceptedSetupProof(result.outcome);
+      if (accepted) {
+        if (config.pendingSetupProofOrganizationId) {
+          config = settleAcceptedSetupProof(config);
+        }
+        proofAccepted = true;
+        p.log.success(`Proof accepted — ${result.outcome.note}`);
+      }
       else p.log.warn(`No accepted proof yet — ${result.outcome.note}`);
     } catch (error) {
       p.log.error(formatRunnerFault(error));
@@ -386,6 +468,9 @@ export async function runWizard(
   }
 
   if (proofAccepted && process.platform === "darwin") {
+    // Setup proof is settled; release the setup execution lock before the
+    // maintenance orchestrator verifies and starts the launchd service.
+    setupLock.release();
     const install = must(
       await p.confirm({
         message: "Install the verified versioned runner as a background service?",
@@ -393,7 +478,7 @@ export async function runWizard(
       }),
     );
     if (install) {
-      const result = installService(AGENT_VERSION);
+      const result = installServiceWithMaintenance(AGENT_VERSION);
       result.ok ? p.log.success(result.note) : p.log.error(result.note);
     }
   } else if (!proofAccepted) {
