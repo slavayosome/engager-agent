@@ -3,7 +3,13 @@ import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CONFIG_DEFAULTS, configPath, loadConfig, saveConfig } from "./config.js";
+import {
+  CONFIG_DEFAULTS,
+  configPath,
+  loadConfig,
+  saveConfig,
+  savePartialConfig,
+} from "./config.js";
 import type { CampaignQueue, CampaignRow } from "./mcp.js";
 import { buildCliArgs, buildPrompt, computeNeed, parseSummary } from "./session.js";
 import { syncSkill } from "./skills.js";
@@ -200,10 +206,35 @@ describe("config — persisted at ENGAGER_AGENT_HOME with 0600", () => {
   it("round-trips and enforces the mode", () => {
     process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-agent-test-"));
     expect(loadConfig()).toBeNull();
-    saveConfig({ ...CONFIG_DEFAULTS, mcpUrl: "https://x/mcp", apiKey: "k", campaignId: 7 });
+    saveConfig({
+      ...CONFIG_DEFAULTS,
+      mcpUrl: "https://x/mcp",
+      apiKey: "k",
+      credentialProfile: "runner",
+      runnerId: "test-runner-config",
+      campaignId: 7,
+    });
     const cfg = loadConfig();
-    expect(cfg).toMatchObject({ mcpUrl: "https://x/mcp", campaignId: 7, model: "sonnet" });
+    expect(cfg).toMatchObject({
+      mcpUrl: "https://x/mcp",
+      credentialProfile: "runner",
+      runnerId: "test-runner-config",
+      campaignId: 7,
+      model: "sonnet",
+    });
     expect(statSync(configPath()).mode & 0o777).toBe(0o600);
+  });
+
+  it("rejects a runner credential whose server-bound runner id is missing", () => {
+    process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-agent-test-"));
+    savePartialConfig({
+      ...CONFIG_DEFAULTS,
+      mcpUrl: "https://x/mcp",
+      apiKey: "k",
+      credentialProfile: "runner",
+      campaignId: 7,
+    });
+    expect(loadConfig()).toBeNull();
   });
 });
 

@@ -2,7 +2,8 @@ import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import {
   CONFIG_DEFAULTS,
-  ensureRunnerId,
+  createRunnerId,
+  isValidRunnerId,
   saveConfig,
   savePartialConfig,
   type AgentConfig,
@@ -11,7 +12,6 @@ import { describeSource, detectEndpoints, type DetectedEndpoint } from "./detect
 import { openBrowser, pollForKey, startDeviceFlow } from "./deviceauth.js";
 import { runCycle } from "./loop.js";
 import { EngagerMcp } from "./mcp.js";
-import { offerRegistration } from "./register.js";
 import { installService } from "./service.js";
 import { skillsRoot, syncSkill } from "./skills.js";
 
@@ -23,10 +23,9 @@ import { skillsRoot, syncSkill } from "./skills.js";
  * before arming the schedule. Every step verifies live; nothing is taken on
  * faith.
  *
- * Returns null when setup finished USEFULLY but incompletely (connected,
- * registered, skills installed — just no agent-led campaign yet): the user is
- * handed off to interactive Claude to create one, and a re-run resumes from
- * the saved partial config.
+ * Returns null when setup finished usefully but incompletely (dedicated runner
+ * connected and its batch skill installed, but no agent-led campaign exists).
+ * Interactive Claude/Desktop access is a separate credential and setup path.
  */
 export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentConfig | null> {
   p.intro("engager-agent — autonomous drafting runner");
@@ -44,6 +43,10 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
     process.exit(1);
   }
   p.log.info(`Claude Code ${claude.stdout.trim()} detected — sessions run on your Claude plan.`);
+
+  // The device grant is bound to this stable runner identity. Legacy configs
+  // without a runner credential profile intentionally reauthorize below.
+  const runnerId = isValidRunnerId(existing?.runnerId) ? existing.runnerId : createRunnerId();
 
   // 1. Endpoint — offer what the machine already knows before asking for URLs.
   const sDetect = p.spinner();
@@ -99,7 +102,7 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
     apiKey =
       picked.apiKey && !burntKeys.has(picked.apiKey)
         ? picked.apiKey
-        : await acquireKey(mcpUrl);
+        : await acquireKey(mcpUrl, runnerId);
 
     const s = p.spinner();
     s.start("Connecting…");
@@ -111,7 +114,9 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       mcp = candidate;
     } catch (e) {
       const msg = (e as Error).message;
-      const badKey = /401|unauthorized/i.test(msg);
+      const badKey = /401|unauthorized|dedicated Engager runner profile|tool surface mismatch/i.test(
+        msg,
+      );
       if (badKey) burntKeys.add(apiKey); // a reused key that failed → ask next round
       s.stop(
         badKey
@@ -124,10 +129,9 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
   }
 
   try {
-    // 2. Register the hosted MCP in the user's Claude surfaces (idempotent:
-    // detect → skip if identical → confirm before any add/update).
-    await offerRegistration(mcpUrl, apiKey);
-
+    // The runner credential is deliberately NOT registered into Claude Code or
+    // Desktop. Headless sessions receive it only through a 0600 temporary MCP
+    // config; interactive clients require their own interactive credential.
     const model = must(
       await p.select({
         message: "Drafting model for the hourly sessions",
@@ -140,42 +144,42 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
       }),
     ) as string;
 
-    // 3. Skill install — the FULL suite (sha256-verified), so the user's
-    // interactive Claude can run setup/brain/campaign/status/tune, not just the
-    // runner's engager-batch (which the loop re-verifies at every start).
+    // 3. Skill install — only the runner's sha256-verified batch workflow.
     const s2 = p.spinner();
-    s2.start("Installing the Engager skills…");
+    s2.start("Installing the Engager runner skill…");
     const manifests = await mcp.skillManifests();
     const installed: string[] = [];
-    for (const m of manifests) {
+    for (const m of manifests.filter((manifest) => manifest.name === "engager-batch")) {
       try {
         await syncSkill(mcp, m.name, skillsRoot("claude"));
         installed.push(`${m.name} ${m.version}`);
       } catch (e) {
-        // engager-batch is what the RUNNER executes — that one is fatal.
-        if (m.name === "engager-batch") throw e;
-        p.log.warn(`skill ${m.name}: install failed (${(e as Error).message}) — continuing`);
+        throw new Error(`skill ${m.name}: install failed (${(e as Error).message})`);
       }
     }
-    s2.stop(
-      installed.length > 0
-        ? `${installed.length} skill(s) in place: ${installed.join(", ")}.`
-        : "No skills served by this server.",
-    );
+    if (installed.length === 0) throw new Error("server does not provide engager-batch");
+    s2.stop(`Runner skill in place: ${installed.join(", ")}.`);
 
     // 4. Campaign pick — agent-led only (this runner never drives server-led).
     // Zero campaigns is NOT a failure: everything useful is already done
-    // (connected, registered, skills installed) — save it and hand off to the
-    // user's Claude, where the engager-setup/-campaign skills take over.
+    // (runner connected, skill installed) — save it and hand off to the
+    // dashboard or a separately authorized interactive agent.
     const agentLed = campaigns.filter((c) => c.draftingMode === "agent" && c.status === "active");
     if (agentLed.length === 0) {
-      savePartialConfig({ ...existing, mcpUrl, apiKey, cli: "claude", model });
+      savePartialConfig({
+        ...existing,
+        mcpUrl,
+        apiKey,
+        credentialProfile: "runner",
+        runnerId,
+        cli: "claude",
+        model,
+      });
       p.log.info("Connection saved — the one missing piece is an active agent-led campaign.");
       p.note(
-        "Your Claude now has the Engager MCP + skills. Create your first campaign:\n" +
-          '  · in Claude Desktop or Claude Code, say: "set up engager"\n' +
-          '    (or "create a campaign" if you\'re already set up)\n' +
-          "  · or use the dashboard\n" +
+        "Create an active agent-led campaign:\n" +
+          "  · use the Engager dashboard, or\n" +
+          "  · use Claude/Desktop with a separate interactive-agent key\n" +
           "then re-run `engager-agent` — it resumes right here.",
         "One step left",
       );
@@ -214,26 +218,19 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
         }),
       ) as string,
     );
-    try {
-      // Best-effort: seed the server-side setting so heartbeats echo it back.
-      // A read-only key or an older server just keeps the local value.
-      await mcp.call("update_campaign", { id: campaignId, agentIntervalMinutes: intervalMinutes });
-    } catch {
-      /* local setting still applies */
-    }
-
     let cfg: AgentConfig = {
       ...CONFIG_DEFAULTS,
       ...existing,
       mcpUrl,
       apiKey,
+      credentialProfile: "runner",
+      runnerId,
       cli: "claude",
       model,
       campaignId,
       intervalMinutes,
     };
     saveConfig(cfg);
-    cfg = ensureRunnerId(cfg);
     p.log.success("Saved ~/.engager/agent.json (0600).");
 
     // 5. Dry-run cycle (batch size 1) — prove the whole chain before walking away.
@@ -335,51 +332,33 @@ export async function runWizard(existing?: Partial<AgentConfig>): Promise<AgentC
 }
 
 /**
- * Get an API key for `mcpUrl`: browser sign-in when the server supports it
- * (device-auth flow — a full-scope agent key is minted on approval, nothing to
- * copy), manual paste as the fallback and for older/self-hosted servers.
+ * Get a dedicated runner credential through the server-selected device profile.
+ * There is deliberately no pasted/general-key fallback: an old server cannot
+ * prove it issued a least-privilege unattended credential, so setup fails closed.
  */
-async function acquireKey(mcpUrl: string): Promise<string> {
-  const method = must(
-    await p.select({
-      message: "How do you want to authenticate?",
-      options: [
-        {
-          value: "browser",
-          label: "Sign in with your browser — a key is created for you (recommended)",
-        },
-        { value: "paste", label: "Paste an API key (dashboard → Settings → API keys)" },
-      ],
-    }),
-  );
-  if (method === "browser") {
-    const s = p.spinner();
-    s.start("Requesting a sign-in code…");
-    const start = await startDeviceFlow(mcpUrl);
-    if (!start) {
-      s.stop("This server doesn't support browser sign-in — paste a key instead.");
-    } else {
-      s.stop(`Your code: ${start.userCode}`);
-      p.note(
-        `Opening your browser. Confirm the code matches, then Approve:\n${start.verificationUrl}`,
-        `Code ${start.userCode}`,
-      );
-      openBrowser(start.verificationUrl);
-      const s2 = p.spinner();
-      s2.start("Waiting for approval in the browser…");
-      const result = await pollForKey(mcpUrl, start);
-      if (result.outcome === "approved") {
-        s2.stop("Approved — your key was created and received (revocable in Settings → API keys).");
-        return result.apiKey;
-      }
-      s2.stop(`Browser sign-in didn't complete: ${result.note}.`);
-    }
+async function acquireKey(mcpUrl: string, runnerId: string): Promise<string> {
+  const s = p.spinner();
+  s.start("Requesting a least-privilege runner sign-in code…");
+  const start = await startDeviceFlow(mcpUrl, runnerId);
+  if (!start) {
+    s.stop("This server cannot issue dedicated runner credentials.");
+    throw new Error("upgrade the Engager server, then run setup again");
   }
-  return must(
-    await p.password({
-      message: "API key (Settings → API keys — needs at least feed:read + messages:write)",
-    }),
+  s.stop(`Your code: ${start.userCode}`);
+  p.note(
+    `Opening your browser. Confirm the code matches, then Approve:\n${start.verificationUrl}`,
+    `Code ${start.userCode}`,
   );
+  openBrowser(start.verificationUrl);
+  const s2 = p.spinner();
+  s2.start("Waiting for runner approval in the browser…");
+  const result = await pollForKey(mcpUrl, start);
+  if (result.outcome === "approved") {
+    s2.stop("Approved — dedicated runner credential received.");
+    return result.apiKey;
+  }
+  s2.stop(`Browser sign-in didn't complete: ${result.note}.`);
+  throw new Error(`runner authorization failed: ${result.note}`);
 }
 
 function must<T>(v: T | symbol): T {

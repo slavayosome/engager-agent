@@ -9,8 +9,8 @@ import { desktopConfigPath, MCP_NAME, type DesktopConfig } from "./register.js";
  * key beats one that doesn't, anything found on the machine beats the cloud
  * default, and manual entry is always the escape hatch:
  *
- *   1. Claude Desktop config  (mcp-remote bridge entry: URL + API key)
- *   2. Claude Code user config (~/.claude.json http entry: URL + key header)
+ *   1. Claude Desktop config  (endpoint only; interactive keys are never reused)
+ *   2. Claude Code user config (endpoint only; interactive keys are never reused)
  *   3. A local dev server     (probe localhost — only shown when it responds)
  *   4. The Engager Cloud default
  */
@@ -28,16 +28,13 @@ export type DetectedEndpoint = {
   source: EndpointSource;
 };
 
-const BEARER = /^Authorization:\s*Bearer\s+(\S+)$/i;
-
-/** Claude Desktop's mcp-remote bridge entry carries both URL and key in args. */
+/** Claude Desktop may carry an interactive key; expose only its endpoint. */
 export function desktopEndpoint(config: DesktopConfig | null): DetectedEndpoint | null {
   const entry = config?.mcpServers?.[MCP_NAME];
   if (!entry) return null;
   const url = entry.args?.find((a) => /^https?:\/\//.test(a));
   if (!url) return null;
-  const key = entry.args?.map((a) => BEARER.exec(a)?.[1]).find(Boolean);
-  return { url, ...(key ? { apiKey: key } : {}), source: "claude-desktop" };
+  return { url, source: "claude-desktop" };
 }
 
 /** Claude Code stores user-scope http servers in ~/.claude.json. The shape is
@@ -48,9 +45,7 @@ export function codeConfigEndpoint(json: unknown): DetectedEndpoint | null {
       json as { mcpServers?: Record<string, { url?: string; headers?: Record<string, string> }> }
     )?.mcpServers?.[MCP_NAME];
     if (!entry?.url || !/^https?:\/\//.test(entry.url)) return null;
-    const auth = entry.headers?.["Authorization"] ?? entry.headers?.["authorization"];
-    const key = auth ? /^Bearer\s+(\S+)$/i.exec(auth)?.[1] : undefined;
-    return { url: entry.url, ...(key ? { apiKey: key } : {}), source: "claude-code" };
+    return { url: entry.url, source: "claude-code" };
   } catch {
     return null;
   }
@@ -111,12 +106,19 @@ export function describeSource(e: DetectedEndpoint): string {
 export async function detectEndpoints(existing?: {
   mcpUrl?: string;
   apiKey?: string;
+  credentialProfile?: string;
+  runnerId?: string;
 }): Promise<DetectedEndpoint[]> {
   const found: (DetectedEndpoint | null)[] = [];
   if (existing?.mcpUrl) {
     found.push({
       url: existing.mcpUrl,
-      ...(existing.apiKey ? { apiKey: existing.apiKey } : {}),
+      ...(existing.apiKey &&
+        existing.credentialProfile === "runner" &&
+        typeof existing.runnerId === "string" &&
+        /^[A-Za-z0-9._:-]{3,200}$/.test(existing.runnerId)
+        ? { apiKey: existing.apiKey }
+        : {}),
       source: "saved-config",
     });
   }

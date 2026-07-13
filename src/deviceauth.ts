@@ -5,8 +5,8 @@ import { hostname } from "node:os";
  * Client side of the server's device-authorization flow: ask the MCP host for
  * a short code, send the user's browser to the dashboard approval page, poll
  * until a freshly minted API key comes back. No key ever gets copy-pasted.
- * Servers without the endpoints (404/501) return null from start — callers
- * fall back to manual key entry.
+ * Servers without the profile-aware endpoints return null from start; callers
+ * fail closed and require a server upgrade instead of accepting a broad key.
  */
 
 export type DeviceStart = {
@@ -22,15 +22,22 @@ export function deviceAuthUrl(mcpUrl: string, path: string): string {
   return new URL(path, mcpUrl).toString();
 }
 
-export async function startDeviceFlow(mcpUrl: string): Promise<DeviceStart | null> {
+export async function startDeviceFlow(
+  mcpUrl: string,
+  runnerId: string,
+): Promise<DeviceStart | null> {
   try {
     const res = await fetch(deviceAuthUrl(mcpUrl, "/device-auth/start"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ clientName: `engager-agent on ${hostname().split(".")[0]}` }),
+      body: JSON.stringify({
+        clientName: `engager-agent on ${hostname().split(".")[0]}`,
+        credentialProfile: "runner",
+        runnerId,
+      }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null; // 404 = older server, 501 = not configured → manual entry
+    if (!res.ok) return null; // old/unconfigured server cannot prove runner least privilege
     const body = (await res.json()) as Partial<DeviceStart>;
     if (!body.deviceCode || !body.userCode || !body.verificationUrl) return null;
     return {

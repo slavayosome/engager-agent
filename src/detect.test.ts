@@ -13,7 +13,7 @@ const URL_ = "https://mcp.example.com/mcp";
 const DEV = "https://dev.example.com/mcp";
 
 describe("desktopEndpoint", () => {
-  it("extracts URL + key from a real mcp-remote bridge entry", () => {
+  it("extracts only the URL from an interactive mcp-remote entry", () => {
     const config = {
       mcpServers: {
         engager: {
@@ -24,7 +24,6 @@ describe("desktopEndpoint", () => {
     };
     expect(desktopEndpoint(config)).toEqual({
       url: DEV,
-      apiKey: "eng_devkey",
       source: "claude-desktop",
     });
   });
@@ -39,13 +38,13 @@ describe("desktopEndpoint", () => {
 });
 
 describe("codeConfigEndpoint", () => {
-  it("extracts an http entry with a bearer header from ~/.claude.json", () => {
+  it("extracts only the URL from an interactive ~/.claude.json entry", () => {
     const json = {
       mcpServers: {
         engager: { type: "http", url: URL_, headers: { Authorization: "Bearer eng_ck" } },
       },
     };
-    expect(codeConfigEndpoint(json)).toEqual({ url: URL_, apiKey: "eng_ck", source: "claude-code" });
+    expect(codeConfigEndpoint(json)).toEqual({ url: URL_, source: "claude-code" });
   });
 
   it("survives arbitrary shapes without throwing", () => {
@@ -66,26 +65,26 @@ describe("buildEndpointOptions", () => {
     expect(opts[0]).toEqual({ url: DEFAULT_CLOUD_URL, source: "cloud" });
   });
 
-  it("orders: saved config → keyed finds → keyless finds → cloud; dedupes by URL keeping the keyed entry", () => {
+  it("orders a saved runner credential before keyless discovered endpoints", () => {
     const found: DetectedEndpoint[] = [
       { url: "http://localhost:8788/mcp", source: "local-dev" },
       { url: DEV, source: "claude-code" }, // same URL, no key
-      { url: DEV, apiKey: "k", source: "claude-desktop" }, // keyed wins the dedupe
+      { url: DEV, apiKey: "k", source: "saved-config" }, // runner credential wins dedupe
       { url: URL_, apiKey: "s", source: "saved-config" },
     ];
     const opts = buildEndpointOptions(found);
     expect(opts.map((o) => o.url)).toEqual([
-      URL_,
       DEV,
+      URL_,
       "http://localhost:8788/mcp",
       DEFAULT_CLOUD_URL,
     ]);
-    expect(opts[1]?.apiKey).toBe("k");
+    expect(opts[0]?.apiKey).toBe("k");
   });
 
-  it("a keyed find at the cloud URL replaces the bare default", () => {
+  it("a saved runner credential at the cloud URL replaces the bare default", () => {
     const opts = buildEndpointOptions([
-      { url: DEFAULT_CLOUD_URL, apiKey: "k", source: "claude-desktop" },
+      { url: DEFAULT_CLOUD_URL, apiKey: "k", source: "saved-config" },
     ]);
     expect(opts).toHaveLength(1);
     expect(opts[0]?.apiKey).toBe("k");

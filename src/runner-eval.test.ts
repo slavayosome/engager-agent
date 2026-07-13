@@ -19,6 +19,8 @@ const CFG: AgentConfig = {
   ...CONFIG_DEFAULTS,
   mcpUrl: "https://fake/mcp",
   apiKey: "k",
+  credentialProfile: "runner",
+  runnerId: "eval-runner",
   campaignId: 7,
 };
 

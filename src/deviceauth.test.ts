@@ -21,16 +21,21 @@ describe("device flow against a scripted server", () => {
   let server: Server;
   let base = "";
   let responses: Array<{ status: number; body: unknown }> = [];
-  const seen: string[] = [];
+  const seen: Array<{ url: string; body: unknown }> = [];
 
   beforeEach(async () => {
     responses = [];
     seen.length = 0;
     server = createServer((req, res) => {
-      seen.push(req.url ?? "");
-      const next = responses.shift() ?? { status: 500, body: {} };
-      res.writeHead(next.status, { "content-type": "application/json" });
-      res.end(JSON.stringify(next.body));
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        seen.push({ url: req.url ?? "", body: raw ? JSON.parse(raw) : null });
+        const next = responses.shift() ?? { status: 500, body: {} };
+        res.writeHead(next.status, { "content-type": "application/json" });
+        res.end(JSON.stringify(next.body));
+      });
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/mcp`;
@@ -49,14 +54,20 @@ describe("device flow against a scripted server", () => {
 
   it("startDeviceFlow returns the grant, or null on 404/501 (fallback to paste)", async () => {
     responses = [{ status: 200, body: START }];
-    const ok = await startDeviceFlow(base);
+    const ok = await startDeviceFlow(base, "test-runner-1");
     expect(ok?.userCode).toBe("AAAA-BBBB");
-    expect(seen[0]).toBe("/device-auth/start");
+    expect(seen[0]).toEqual({
+      url: "/device-auth/start",
+      body: expect.objectContaining({
+        credentialProfile: "runner",
+        runnerId: "test-runner-1",
+      }),
+    });
 
     responses = [{ status: 501, body: { error: "not configured" } }];
-    expect(await startDeviceFlow(base)).toBeNull();
+    expect(await startDeviceFlow(base, "test-runner-1")).toBeNull();
     responses = [{ status: 404, body: { error: "not found" } }];
-    expect(await startDeviceFlow(base)).toBeNull();
+    expect(await startDeviceFlow(base, "test-runner-1")).toBeNull();
   });
 
   it("pollForKey rides out pending + transient errors, then claims the key", async () => {
@@ -88,10 +99,31 @@ describe("partial config", () => {
   });
 
   it("saves a campaign-less connection that loadConfig rejects but the wizard can seed from", () => {
-    savePartialConfig({ mcpUrl: "https://m/mcp", apiKey: "eng_k", cli: "claude", model: "sonnet" });
+    savePartialConfig({
+      mcpUrl: "https://m/mcp",
+      apiKey: "eng_k",
+      credentialProfile: "runner",
+      runnerId: "test-runner-1",
+      cli: "claude",
+      model: "sonnet",
+    });
     expect(loadConfig()).toBeNull(); // incomplete — the loop must not start
     const partial = loadPartialConfig();
     expect(partial?.mcpUrl).toBe("https://m/mcp");
     expect(partial?.apiKey).toBe("eng_k");
+  });
+
+  it("refuses a complete legacy config until it receives a runner-profile credential", () => {
+    savePartialConfig({
+      mcpUrl: "https://m/mcp",
+      apiKey: "eng_legacy",
+      cli: "claude",
+      model: "sonnet",
+      campaignId: 7,
+      intervalMinutes: 60,
+      maxTurns: 80,
+      dailySessionCap: 24,
+    });
+    expect(loadConfig()).toBeNull();
   });
 });

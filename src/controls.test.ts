@@ -279,6 +279,7 @@ describe("buildHeartbeat", () => {
       {
         mcpUrl: "https://m/mcp",
         apiKey: "k",
+        credentialProfile: "runner",
         cli: "claude",
         model: "sonnet",
         campaignId: 7,
