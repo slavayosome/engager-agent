@@ -1,0 +1,110 @@
+{
+  "generatedFrom": "esbuild-meta",
+  "components": [
+    {
+      "name": "@clack/core",
+      "version": "0.5.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/bombshell-dev/clack.git",
+      "noticeBytes": 1061
+    },
+    {
+      "name": "@clack/prompts",
+      "version": "0.11.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/bombshell-dev/clack.git",
+      "noticeBytes": 1061
+    },
+    {
+      "name": "@engager/runner-contract",
+      "version": "1.0.1",
+      "license": "MIT",
+      "repository": null,
+      "noticeBytes": 1063
+    },
+    {
+      "name": "@modelcontextprotocol/sdk",
+      "version": "1.29.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/modelcontextprotocol/typescript-sdk.git",
+      "noticeBytes": 1070
+    },
+    {
+      "name": "ajv",
+      "version": "8.20.0",
+      "license": "MIT",
+      "repository": "ajv-validator/ajv",
+      "noticeBytes": 1088
+    },
+    {
+      "name": "ajv-formats",
+      "version": "3.0.1",
+      "license": "MIT",
+      "repository": "git+https://github.com/ajv-validator/ajv-formats.git",
+      "noticeBytes": 1073
+    },
+    {
+      "name": "eventsource-parser",
+      "version": "3.1.0",
+      "license": "MIT",
+      "repository": "git+ssh://git@github.com/rexxars/eventsource-parser.git",
+      "noticeBytes": 1097
+    },
+    {
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "license": "MIT",
+      "repository": "git+https://github.com/epoberezkin/fast-deep-equal.git",
+      "noticeBytes": 1073
+    },
+    {
+      "name": "fast-uri",
+      "version": "3.1.3",
+      "license": "BSD-3-Clause",
+      "repository": "git+https://github.com/fastify/fast-uri.git",
+      "noticeBytes": 1813
+    },
+    {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/epoberezkin/json-schema-traverse.git",
+      "noticeBytes": 1073
+    },
+    {
+      "name": "picocolors",
+      "version": "1.1.1",
+      "license": "ISC",
+      "repository": "alexeyraspopov/picocolors",
+      "noticeBytes": 786
+    },
+    {
+      "name": "pkce-challenge",
+      "version": "5.0.1",
+      "license": "MIT",
+      "repository": "git+https://github.com/crouchcd/pkce-challenge.git",
+      "noticeBytes": 1055
+    },
+    {
+      "name": "sisteransi",
+      "version": "1.0.5",
+      "license": "MIT",
+      "repository": "https://github.com/terkelg/sisteransi",
+      "noticeBytes": 1078
+    },
+    {
+      "name": "zod",
+      "version": "3.25.76",
+      "license": "MIT",
+      "repository": "git+https://github.com/colinhacks/zod.git",
+      "noticeBytes": 1071
+    },
+    {
+      "name": "zod-to-json-schema",
+      "version": "3.25.2",
+      "license": "ISC",
+      "repository": "https://github.com/StefanTerdell/zod-to-json-schema",
+      "noticeBytes": 745
+    }
+  ]
+}

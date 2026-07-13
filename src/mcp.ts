@@ -1,292 +1,384 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  DraftReceiptSchema,
+  ReplyReceiptSchema,
+  RunnerClaimInputSchema,
+  RunnerClaimResponseSchema,
+  RunnerCompleteWorkInputSchema,
+  RunnerCompletionResponseSchema,
+  RunnerErrorEnvelopeSchema,
+  RunnerHeartbeatInputSchema,
+  RunnerLeaseInputSchema,
+  RunnerLeaseResponseSchema,
+  RunnerSubmitBatchInputSchema,
+  RunnerSubmitRepliesInputSchema,
+  RunnerSubmitTriageInputSchema,
+  RunnerValidateBatchInputSchema,
+  RunnerValidateBatchResponseSchema,
+  RunnerWorkContextInputSchema,
+  RunnerWorkContextResponseSchema,
+  TriageReceiptSchema,
+  type DraftReceipt,
+  type ReplyReceipt,
+  type RunnerClaimInput,
+  type RunnerClaimResponse,
+  type RunnerCompleteWorkInput,
+  type RunnerCompletionResponse,
+  type RunnerErrorEnvelope,
+  type RunnerHeartbeatInput,
+  type RunnerLeaseInput,
+  type RunnerLeaseResponse,
+  type RunnerSubmitBatchInput,
+  type RunnerSubmitRepliesInput,
+  type RunnerSubmitTriageInput,
+  type RunnerValidateBatchInput,
+  type RunnerValidateBatchResponse,
+  type RunnerWorkContextInput,
+  type RunnerWorkContextResponse,
+  type TriageReceipt,
+} from "@engager/runner-contract";
+import { RunnerFault, redact, sanitizeTerminalText } from "./errors.js";
+import { isSafeMcpUrl } from "./config.js";
+import { boundedFetch } from "./http.js";
+import {
+  classifyRunnerSurface,
+  parseNegotiatedDirective,
+  type NegotiatedDirective,
+  type RunnerSurface,
+} from "./protocol.js";
 
-/**
- * Thin typed wrapper over the hosted Engager MCP (streamable HTTP + bearer key).
- * This is the runner's NO-LLM data plane: preflight reads, discovery top-ups,
- * skill installs, post-session verification. Drafting never happens here — that
- * is the headless agent session's job.
- *
- * The shapes below are structural pick-outs of what the tools return — only the
- * fields the runner actually consumes, everything else passes through untyped.
- */
-
-export type CampaignRow = {
-  id: number;
-  name: string;
-  status: string;
-  draftingMode: "agent" | "server";
-  /** DEPRECATED server column, only used by the local FALLBACK sizing
-   *  (computeNeed) against pre-workOrder servers; newer servers may stop
-   *  sending it — absent degrades to uncapped fallback. */
-  hourlyCommentCap?: number;
-  autoReply?: { enabled?: boolean } | null;
+type CallResult = {
+  isError?: boolean;
+  content?: Array<{ type: string; text?: string }>;
 };
 
-export type CampaignQueue = {
-  campaignId: number;
-  campaignName: string;
-  draftingMode: "agent" | "server";
-  /** The single mode toggle: manual = drafts await approval, auto = schedule on submit. */
-  mode?: "auto" | "manual";
-  pendingScheduled: number;
-  proposedAwaitingApproval: number;
-  /** Monotonic all-messages counter (newer servers) — see verify.ts. */
-  messagesTotal?: number;
-  dailyCapacity: number;
-  runwayDays: number;
-  recommendedBatchSize: number;
-  needsRefill: boolean;
-  candidatePool: { size: number; target: number; agingOutSoon: number; sufficient: boolean };
+export type RunnerMcpSession = {
+  connect(options?: McpRequestOptions): Promise<void>;
+  close(): Promise<void>;
+  listTools(options?: McpRequestOptions): Promise<{ tools: Array<{ name: string }> }>;
+  callTool(
+    input: { name: string; arguments: Record<string, unknown> },
+    options?: McpRequestOptions,
+  ): Promise<unknown>;
 };
 
-export type IncomingComment = {
-  id: number;
-  campaignId: number | null;
-  commenterName: string | null;
-  text: string;
-  receivedAt: number;
-  status: string;
+type McpRequestOptions = {
+  signal?: AbortSignal;
+  timeout?: number;
+  maxTotalTimeout?: number;
 };
 
-/** Per-wake drafting quota authored by the server from its day plan: unfilled
- *  send slots in the upcoming wake window. commentsToDraft is the batch size
- *  for the NEXT session; pendingReplies is informational (the runner still
- *  replies to everything pending). */
-export type ServerWorkOrder = {
-  /** "draft" = the classic fill-the-window order (commentsToDraft). "rank" = a
-   *  DISCOVER campaign's scout wake: score unranked candidates + draft ONLY the
-   *  user's explicit requests (commentsToDraft is always 0 there). Absent on
-   *  pre-discover servers → treated as "draft". */
-  mode?: "draft" | "rank";
-  commentsToDraft: number;
-  /** Discover only: unranked pool candidates to score this wake. */
-  candidatesToRank?: number;
-  /** Discover only: posts the user explicitly asked to draft. */
-  requestedDrafts?: number;
-  /** Curated-pool refresh (BOTH modes): raw candidates to relevance-triage this
-   *  wake so the matched pool stays topped up. `toTriage` 0 = pool full. Absent
-   *  on pre-curation servers → the runner triages nothing extra. */
-  triage?: { toTriage: number; topByReach: number; random: number };
-  pendingReplies: number;
-  /** Epoch ms end of the window this order covers. */
-  windowEndsAt: number;
-};
-
-export type RunnerDirective = {
-  directive: "run" | "idle" | "stop";
-  reason: string;
-  /** Server-authored wake cadence (campaign.agentIntervalMinutes). The runner
-   *  adopts + persists a positive value; null/absent = keep the local setting.
-   *  Servers ≥ the jitter release send this PRE-JITTERED (±25% per wake
-   *  window) — prefer intervalMinutesBase when present. */
-  intervalMinutes?: number | null;
-  /** The STABLE configured cadence from newer servers. Persist THIS and jitter
-   *  locally, so config doesn't churn as the server's per-window jitter moves. */
-  intervalMinutesBase?: number | null;
-  /** Per-wake batch sizing from newer servers. undefined = old server (size
-   *  locally via computeNeed); null = directive isn't run / nothing to size. */
-  workOrder?: ServerWorkOrder | null;
-};
-
-/** Heartbeat payload for report_runner_status (mirrors ~/.engager/status.json). */
-export type HeartbeatPayload = {
-  runnerId: string;
-  state: string;
-  hostname?: string;
-  version?: string;
-  campaignId?: number;
-  intervalMinutes?: number;
-  lastCycleAt?: number;
-  lastOutcome?: { ran: boolean; ok: boolean; note: string };
-  consecutiveFailures?: number;
-  sessionsToday?: number;
-  nextWakeAt?: number;
-};
-
-export type OpsSummary = {
-  killSwitch: boolean;
-  pausedReason: string | null;
-  pausedUntil: number | null;
-};
-
-export type SkillManifestFile = { path: string; sha256: string };
-export type SkillManifest = {
-  name: string;
-  version: string;
-  files: SkillManifestFile[];
-};
-
-/** Must stay byte-for-byte aligned with Engager's temporary runner-v1 bridge.
- * The runner validates this after every MCP connect, so a manually substituted
- * interactive/admin key fails before any headless session can inherit it. */
-export const RUNNER_V1_TOOL_NAMES = [
-  "report_runner_status",
-  "list_campaigns",
-  "get_ops_summary",
-  "get_queue_status",
-  "list_incoming_comments",
-  "discover",
-  "list_skills",
-  "get_skill_file",
-  "get_refresh_batch",
-  "submit_candidate_ranking",
-  "list_candidates",
-  "get_drafting_context",
-  "submit_batch",
-  "submit_reply",
-] as const;
-
-export function assertRunnerToolSurface(names: string[]): void {
-  const expected = [...RUNNER_V1_TOOL_NAMES].sort();
-  const actual = [...new Set(names)].sort();
-  if (
-    actual.length !== expected.length ||
-    actual.some((name, index) => name !== expected[index])
-  ) {
-    throw new Error(
-      "credential is not the dedicated Engager runner profile (tool surface mismatch); reauthorize this runner",
-    );
-  }
-}
+export type RunnerMcpSessionFactory = () => RunnerMcpSession;
 
 export class EngagerMcp {
-  private client: Client | null = null;
+  private client: RunnerMcpSession | null = null;
+  private surfaceValue: RunnerSurface | null = null;
 
   constructor(
     private readonly url: string,
     private readonly apiKey: string,
-  ) {}
+    private readonly runnerVersion = "0",
+    private readonly sessionFactory: RunnerMcpSessionFactory = () => {
+      const transport = new StreamableHTTPClientTransport(new URL(this.url), {
+        requestInit: { headers: { Authorization: `Bearer ${this.apiKey}` } },
+        fetch: boundedFetch,
+      });
+      const client = new Client({ name: "engager-agent", version: this.runnerVersion });
+      return {
+        connect: (options) => client.connect(transport, options),
+        close: () => client.close(),
+        listTools: (options) => client.listTools(undefined, options),
+        callTool: (input, options) => client.callTool(input, undefined, options),
+      };
+    },
+    private readonly signal?: AbortSignal,
+  ) {
+    if (!isSafeMcpUrl(url)) {
+      throw new RunnerFault("RUNNER_NOT_CONFIGURED", "Engager endpoint must use HTTPS", {
+        impact: "The runner credential was not sent over an unsafe transport.",
+        recovery: "Use an HTTPS endpoint; HTTP is allowed only for localhost development.",
+      });
+    }
+  }
 
-  async connect(): Promise<void> {
-    const transport = new StreamableHTTPClientTransport(new URL(this.url), {
-      requestInit: { headers: { Authorization: `Bearer ${this.apiKey}` } },
-    });
-    const client = new Client({ name: "engager-agent", version: "0.1.0" });
-    await client.connect(transport);
+  get surface(): RunnerSurface | null {
+    return this.surfaceValue;
+  }
+
+  async connect(): Promise<RunnerSurface> {
+    if (this.client) return this.surfaceValue!;
+    const client = this.sessionFactory();
     try {
-      const tools = await client.listTools();
-      assertRunnerToolSurface(tools.tools.map((tool) => tool.name));
+      await client.connect(this.requestOptions(20_000));
+      const tools = await client.listTools(this.requestOptions(20_000));
+      this.surfaceValue = classifyRunnerSurface(tools.tools.map((tool) => tool.name));
       this.client = client;
+      return this.surfaceValue;
     } catch (error) {
-      await client.close();
-      throw error;
+      await client.close().catch(() => undefined);
+      throw transportFault(error, [this.apiKey]);
     }
   }
 
   async close(): Promise<void> {
-    await this.client?.close();
+    await this.client?.close().catch(() => undefined);
     this.client = null;
+    this.surfaceValue = null;
   }
 
-  /** Call a tool and parse its single JSON text payload; tool errors throw. */
-  async call<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
-    if (!this.client) throw new Error("not connected");
-    const res = (await this.client.callTool({ name, arguments: args })) as {
-      isError?: boolean;
-      content?: Array<{ type: string; text?: string }>;
-    };
-    const text = res.content?.find((c) => c.type === "text")?.text ?? "";
-    if (res.isError) throw new Error(`${name}: ${truncate(text, 400)}`);
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new Error(`${name}: non-JSON tool response: ${truncate(text, 200)}`);
-    }
-  }
-
-  listCampaigns(): Promise<CampaignRow[]> {
-    return this.call<CampaignRow[]>("list_campaigns");
-  }
-
-  async campaignQueue(campaignId: number): Promise<CampaignQueue> {
-    return this.call<CampaignQueue>("get_queue_status", { campaignId });
-  }
-
-  listIncoming(campaignId?: number): Promise<IncomingComment[]> {
-    return this.call<IncomingComment[]>("list_incoming_comments", {
-      status: "new",
-      ...(campaignId != null ? { campaignId } : {}),
-    });
-  }
-
-  /** Stateless page-1 top-up sweep (no LLM, no server drafting side effects). */
-  discover(campaignId: number): Promise<unknown> {
-    return this.call("discover", { campaignId });
+  async reconnect(): Promise<RunnerSurface> {
+    await this.close();
+    return this.connect();
   }
 
   /**
-   * Heartbeat: upsert this runner's liveness row and get back the server's
-   * control directive. The caller MUST obey it (run/idle/stop).
+   * A cohort runner first sees bootstrap tools. The heartbeat persists v2.1
+   * capability; registration is immutable for that server instance, so close
+   * and reconnect before any claim.
    */
-  async reportStatus(hb: HeartbeatPayload): Promise<RunnerDirective> {
-    const res = await this.call<{
-      directive: RunnerDirective["directive"];
-      reason: string;
-      intervalMinutes?: number | null;
-      intervalMinutesBase?: number | null;
-      workOrder?: ServerWorkOrder | null;
-    }>("report_runner_status", hb);
-    return {
-      directive: res.directive,
-      reason: res.reason,
-      // Older servers omit these — undefined means "no server opinion", never 0.
-      ...(res.intervalMinutes !== undefined ? { intervalMinutes: res.intervalMinutes } : {}),
-      ...(res.intervalMinutesBase !== undefined
-        ? { intervalMinutesBase: res.intervalMinutesBase }
-        : {}),
-      ...(res.workOrder !== undefined ? { workOrder: res.workOrder } : {}),
-    };
-  }
-
-  /** Kill-switch / org-pause flags (fallback directive source for old servers). */
-  opsSummary(): Promise<OpsSummary> {
-    return this.call<OpsSummary>("get_ops_summary");
-  }
-
-  async skillManifests(): Promise<SkillManifest[]> {
-    const res = await this.call<{ skills?: SkillManifest[] } | SkillManifest[]>("list_skills");
-    return Array.isArray(res) ? res : (res.skills ?? []);
-  }
-
-  async skillManifest(name: string): Promise<SkillManifest | null> {
-    return (await this.skillManifests()).find((s) => s.name === name) ?? null;
-  }
-
-  async skillFile(name: string, path: string): Promise<string> {
-    if (!this.client) throw new Error("not connected");
-    const res = (await this.client.callTool({ name: "get_skill_file", arguments: { name, path } })) as {
-      isError?: boolean;
-      content?: Array<{ type: string; text?: string }>;
-    };
-    const text = res.content?.find((c) => c.type === "text")?.text ?? "";
-    if (res.isError) throw new Error(`get_skill_file ${name}/${path}: ${truncate(text, 200)}`);
-    return unwrapSkillFile(text, name, path);
-  }
-}
-
-/**
- * The server's get_skill_file wraps the file as JSON {name, path, content}
- * (that's what jsonResult produces); accept a bare-text body too so a future
- * verbatim server also verifies. The unwrap is STRICT (name+path must echo the
- * request) so a skill file whose own content happens to be JSON with a
- * `content` field can never be mis-unwrapped. Discovered the hard way: sha256
- * verification failed on every fresh install because the CLI hashed the
- * envelope, not the file — invisible on machines where the skills already
- * existed with matching hashes (sync skips the download entirely).
- */
-export function unwrapSkillFile(text: string, name: string, path: string): string {
-  try {
-    const parsed = JSON.parse(text) as { name?: unknown; path?: unknown; content?: unknown };
-    if (parsed && parsed.name === name && parsed.path === path && typeof parsed.content === "string") {
-      return parsed.content;
+  async negotiate(heartbeat: RunnerHeartbeatInput): Promise<NegotiatedDirective> {
+    RunnerHeartbeatInputSchema.parse(heartbeat);
+    await this.connect();
+    const negotiated = parseNegotiatedDirective(
+      await this.callJson("report_runner_status", heartbeat as unknown as Record<string, unknown>),
+    );
+    if (negotiated.protocol === "2.1" && this.surfaceValue !== "v2") {
+      const surface = await this.reconnect();
+      if (surface !== "v2") {
+        throw new RunnerFault(
+          "CONTRACT_UPGRADE_REQUIRED",
+          "server accepted protocol 2.1 but did not expose the leased runner surface",
+          {
+            impact: "No unattended work was claimed.",
+            recovery: "Run `engager-agent doctor`; reconnect or upgrade the server before retrying.",
+          },
+        );
+      }
     }
-  } catch {
-    /* bare text */
+    if (negotiated.protocol === "v1" && this.surfaceValue !== "v1-or-bootstrap") {
+      throw new RunnerFault("CONTRACT_UPGRADE_REQUIRED", "legacy directive arrived on a v2 tool surface", {
+        impact: "The protocol transition was not trusted, so the runner stayed idle.",
+        recovery: "Run `engager-agent doctor` and verify the organization rollout state.",
+      });
+    }
+    return negotiated;
   }
-  return text;
+
+  async claim(input: RunnerClaimInput): Promise<RunnerClaimResponse> {
+    return parseContractResponse(
+      "claim_runner_work",
+      RunnerClaimResponseSchema,
+      await this.v2Call("claim_runner_work", RunnerClaimInputSchema.parse(input)),
+    );
+  }
+
+  async renewLease(input: RunnerLeaseInput): Promise<RunnerLeaseResponse> {
+    return parseContractResponse(
+      "renew_runner_lease",
+      RunnerLeaseResponseSchema,
+      await this.v2Call("renew_runner_lease", RunnerLeaseInputSchema.parse(input)),
+    );
+  }
+
+  async workContext(input: RunnerWorkContextInput): Promise<RunnerWorkContextResponse> {
+    return parseContractResponse(
+      "get_runner_work_context",
+      RunnerWorkContextResponseSchema,
+      await this.v2Call("get_runner_work_context", RunnerWorkContextInputSchema.parse(input)),
+    );
+  }
+
+  async validateBatch(input: RunnerValidateBatchInput): Promise<RunnerValidateBatchResponse> {
+    return parseContractResponse(
+      "runner_validate_batch",
+      RunnerValidateBatchResponseSchema,
+      await this.v2Call("runner_validate_batch", RunnerValidateBatchInputSchema.parse(input)),
+    );
+  }
+
+  async submitTriage(input: RunnerSubmitTriageInput): Promise<TriageReceipt> {
+    return parseContractResponse(
+      "runner_submit_triage",
+      TriageReceiptSchema,
+      await this.v2Call("runner_submit_triage", RunnerSubmitTriageInputSchema.parse(input)),
+    );
+  }
+
+  async submitBatch(input: RunnerSubmitBatchInput): Promise<DraftReceipt> {
+    return parseContractResponse(
+      "runner_submit_batch",
+      DraftReceiptSchema,
+      await this.v2Call("runner_submit_batch", RunnerSubmitBatchInputSchema.parse(input)),
+    );
+  }
+
+  async submitReplies(input: RunnerSubmitRepliesInput): Promise<ReplyReceipt> {
+    return parseContractResponse(
+      "runner_submit_replies",
+      ReplyReceiptSchema,
+      await this.v2Call("runner_submit_replies", RunnerSubmitRepliesInputSchema.parse(input)),
+    );
+  }
+
+  async complete(input: RunnerCompleteWorkInput): Promise<RunnerCompletionResponse> {
+    return parseContractResponse(
+      "complete_runner_work",
+      RunnerCompletionResponseSchema,
+      await this.v2Call("complete_runner_work", RunnerCompleteWorkInputSchema.parse(input)),
+    );
+  }
+
+  private async v2Call(name: string, input: object): Promise<unknown> {
+    if (this.surfaceValue !== "v2") {
+      throw new RunnerFault("CONTRACT_UPGRADE_REQUIRED", `${name} requires the v2.1 runner surface`, {
+        impact: "No runner mutation was attempted.",
+        recovery: "Negotiate protocol 2.1 and reconnect before claiming work.",
+      });
+    }
+    return this.callJson(name, input as Record<string, unknown>);
+  }
+
+  private async callJson<T = unknown>(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<T> {
+    const text = await this.callText(name, args);
+    try {
+      return JSON.parse(text) as T;
+    } catch (error) {
+      throw new RunnerFault("VALIDATION_REJECTED", `${name} returned non-JSON data`, {
+        impact: "The response was discarded before it could influence runner state.",
+        recovery: "Upgrade the server/runner contract pair, then retry.",
+        cause: error,
+      });
+    }
+  }
+
+  private async callText(name: string, args: Record<string, unknown>): Promise<string> {
+    if (!this.client) throw new Error("MCP client is not connected");
+    const secrets = requestSecrets(this.apiKey, args);
+    let response: CallResult;
+    try {
+      response = (await this.client.callTool(
+        { name, arguments: args },
+        this.requestOptions(name === "renew_runner_lease" ? 10_000 : 30_000),
+      )) as CallResult;
+    } catch (error) {
+      throw transportFault(error, secrets);
+    }
+    const text = response.content?.find((part) => part.type === "text")?.text ?? "";
+    if (!response.isError) return text;
+    let envelope: RunnerErrorEnvelope | null = null;
+    try {
+      envelope = RunnerErrorEnvelopeSchema.parse(JSON.parse(text));
+    } catch {
+      /* v1/plain SDK error */
+    }
+    if (envelope) throw remoteFault(envelope, secrets);
+    throw transportFault(new Error(`${name}: ${text.slice(0, 500)}`), secrets);
+  }
+
+  private requestOptions(timeout: number): McpRequestOptions {
+    return {
+      ...(this.signal ? { signal: this.signal } : {}),
+      timeout,
+      maxTotalTimeout: timeout,
+    };
+  }
 }
 
-function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + "…" : s;
+function parseContractResponse<T>(
+  operation: string,
+  schema: { parse(value: unknown): T },
+  value: unknown,
+): T {
+  try {
+    return schema.parse(value);
+  } catch (error) {
+    throw new RunnerFault("VALIDATION_REJECTED", `${operation} returned data outside the runner contract`, {
+      impact: "The response was discarded before it could alter local or server completion state.",
+      recovery: "Upgrade the server/runner contract pair and report the operation reference.",
+      cause: error,
+    });
+  }
+}
+
+function remoteFault(
+  error: RunnerErrorEnvelope,
+  secrets: readonly (string | undefined)[],
+): RunnerFault {
+  const leaseCodes = new Set([
+    "work_order_not_found",
+    "work_order_not_claimed",
+    "work_order_terminal",
+    "wrong_runner",
+    "invalid_lease",
+    "lease_expired",
+    "work_order_expired",
+    "control_state_changed",
+    "subscription_inactive",
+  ]);
+  const validationCodes = new Set([
+    "context_revision_mismatch",
+    "context_required",
+    "context_too_large",
+    "wrong_lane",
+    "item_out_of_scope",
+    "idempotency_conflict",
+    "stale_item",
+    "invalid_submission",
+  ]);
+  const code =
+    error.code === "runner_upgrade_required" || error.code === "runner_v2_disabled"
+      ? "CONTRACT_UPGRADE_REQUIRED"
+      : leaseCodes.has(error.code)
+        ? "LEASE_LOST"
+        : validationCodes.has(error.code)
+          ? "VALIDATION_REJECTED"
+          : error.status === 401 || error.status === 403 || error.code === "runner_identity_mismatch"
+            ? "AUTH_REVOKED"
+            : "INTERNAL_ERROR";
+  return new RunnerFault(code, sanitizeTerminalText(redact(error.error, secrets)), {
+    impact:
+      code === "LEASE_LOST"
+        ? "The current result was not accepted; the runner will not resubmit it under a new lease."
+        : "The runner stopped before an unverified mutation could be accepted.",
+    recovery:
+      (error.recovery ? sanitizeTerminalText(redact(error.recovery, secrets)) : undefined) ??
+      (code === "AUTH_REVOKED"
+        ? "Run `engager-agent setup --reauthorize`."
+        : "Run `engager-agent doctor`, then retry the same safe operation."),
+    retryable: error.retryable,
+    reference: error.reference
+      ? sanitizeTerminalText(redact(error.reference, secrets))
+      : undefined,
+    remoteCode: error.code,
+    discardJournal: validationCodes.has(error.code),
+  });
+}
+
+function transportFault(
+  error: unknown,
+  secrets: readonly (string | undefined)[],
+): RunnerFault {
+  if (error instanceof RunnerFault) return error;
+  const raw = redact(error instanceof Error ? error.message : String(error), secrets);
+  const auth = /\b(401|403|unauthori[sz]ed|forbidden|invalid.*(?:key|token))\b/i.test(raw);
+  const safe = sanitizeTerminalText(raw) || "MCP request failed";
+  return new RunnerFault(auth ? "AUTH_REVOKED" : "SERVER_UNREACHABLE", safe, {
+    impact: "No new work was claimed and no local fallback was run.",
+    recovery: auth
+      ? "Run `engager-agent setup --reauthorize`."
+      : "Check the server URL and network with `engager-agent doctor`; retry after connectivity returns.",
+    retryable: !auth,
+    cause: error,
+  });
+}
+
+function requestSecrets(
+  apiKey: string,
+  args: Record<string, unknown>,
+): readonly (string | undefined)[] {
+  return [apiKey, typeof args.leaseToken === "string" ? args.leaseToken : undefined];
 }
