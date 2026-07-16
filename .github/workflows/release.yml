@@ -48,3 +48,5 @@ jobs:
       - run: npm run release:verify-artifact
       - run: git diff --exit-code -- bundle THIRD_PARTY_NOTICES
       - run: npm run release:publish-artifact
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
