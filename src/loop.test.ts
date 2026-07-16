@@ -108,7 +108,7 @@ describe("fail-closed control loop", () => {
     expect(engineRun).not.toHaveBeenCalled();
     expect(handoff).toEqual({
       ok: false,
-      reason: "upgrade transition was not committed before the maintenance handoff timeout",
+      reason: "lifecycle transition was not committed before the maintenance handoff timeout",
     });
     expect(
       upgradeHandoffStoppedCycle(handoff.ok ? "" : handoff.reason, 500),
@@ -116,7 +116,7 @@ describe("fail-closed control loop", () => {
       at: 500,
       ran: false,
       ok: false,
-      note: "upgrade transition was not committed before the maintenance handoff timeout",
+      note: "lifecycle transition was not committed before the maintenance handoff timeout",
       errorCode: "INTERNAL_ERROR",
     });
   });
@@ -162,7 +162,7 @@ describe("fail-closed control loop", () => {
     });
     expect(result).toEqual({
       ok: false,
-      reason: "upgrade transition journal became unsafe: mode changed",
+      reason: "lifecycle transition journal became unsafe: mode changed",
     });
   });
 

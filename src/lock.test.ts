@@ -15,6 +15,7 @@ import {
   type LockOwner,
 } from "./lock.js";
 import { upgradeTransitionPath } from "./upgrade-transition.js";
+import { disconnectTransitionPath } from "./disconnect-transition.js";
 
 let prior: string | undefined;
 let priorMaintenanceToken: string | undefined;
@@ -113,6 +114,23 @@ describe("runner singleton", () => {
       const verificationRunner = acquire("tokened-recovery-service");
       verificationRunner.release();
       expect(process.env[MAINTENANCE_TOKEN_ENV]).toBeUndefined();
+    } finally {
+      maintenance.release();
+    }
+  });
+
+  it("fences every ordinary execution entry when disconnect recovery exists", () => {
+    writeFileSync(disconnectTransitionPath(), "{}\n", { mode: 0o600 });
+    expect(() => acquire("runner-disconnect-crash")).toThrowError(
+      expect.objectContaining({ code: "RUNNER_ALREADY_ACTIVE" }),
+    );
+    expect(existsSync(runnerLockPath("runner-disconnect-crash"))).toBe(false);
+
+    const maintenance = acquireMaintenanceLock("disconnect-reconciler", identityDeps);
+    try {
+      process.env[MAINTENANCE_TOKEN_ENV] = maintenance.owner.token;
+      const recovery = acquire("disconnect-recovery-service");
+      recovery.release();
     } finally {
       maintenance.release();
     }

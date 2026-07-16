@@ -1,18 +1,22 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   findUnknownFlag,
+  pauseCommand,
   resumeCommand,
   sanitizeLogText,
   shouldEnterServiceLifecycle,
   statusCommand,
   stopCommand,
   type StopCommandDeps,
+  type PauseCommandDeps,
   type ResumeCommandDeps,
 } from "./commands.js";
 import { maintenanceLockPath, runnerLockPath } from "./lock.js";
+import { disconnectTransitionPath } from "./disconnect-transition.js";
+import { configPath } from "./config.js";
 
 let priorHome: string | undefined;
 beforeEach(() => {
@@ -34,6 +38,13 @@ describe("sanitized log tail", () => {
     for (const line of safe.split("\n")) {
       expect(line).not.toMatch(/[\x00-\x1f\x7f-\x9f\u202e]/);
     }
+  });
+
+  it.each([0o600, 0o644])("remains available when agent.json is malformed at mode %s", (mode) => {
+    writeFileSync(configPath(), "not-json\n", { mode: 0o600 });
+    chmodSync(configPath(), mode);
+    expect(() => sanitizeLogText("token=diagnostic-secret\nlast safe line")).not.toThrow();
+    expect(sanitizeLogText("token=diagnostic-secret")).not.toContain("diagnostic-secret");
   });
 });
 
@@ -131,7 +142,73 @@ describe("resume command", () => {
   });
 });
 
+describe("pause command", () => {
+  it("writes pause intent only inside lifecycle maintenance", () => {
+    const write = vi.fn();
+    const output = vi.fn();
+    const deps: PauseCommandDeps = {
+      pause: (apply) => {
+        apply();
+        return { ok: true, note: "paused under maintenance" };
+      },
+      write,
+      now: () => 1_000,
+      output,
+    };
+    pauseCommand("30m", deps);
+    expect(write).toHaveBeenCalledWith(1_801_000);
+    expect(output).toHaveBeenCalledWith(expect.stringContaining("paused until"));
+  });
+
+  it("does not leave a marker when disconnect cleanup wins maintenance", () => {
+    const write = vi.fn();
+    const output = vi.fn();
+    const deps: PauseCommandDeps = {
+      pause: () => ({
+        ok: false,
+        note: "UPGRADE_BLOCKED: pause observed a changed runner configuration after acquiring maintenance",
+      }),
+      write,
+      now: () => 1_000,
+      output,
+    };
+    pauseCommand(undefined, deps);
+    expect(write).not.toHaveBeenCalled();
+    expect(output).toHaveBeenCalledWith(expect.stringContaining("changed runner configuration"));
+    expect(process.exitCode).toBe(1);
+  });
+});
+
 describe("status lock diagnostics", () => {
+  it("treats a dangling agent.json symlink as present unsafe state", () => {
+    symlinkSync(join(process.env.ENGAGER_AGENT_HOME!, "missing-config"), configPath());
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      statusCommand(true);
+      const rendered = output.mock.calls.map(([value]) => String(value)).join("");
+      expect(JSON.parse(rendered)).toMatchObject({
+        verdict: expect.stringContaining("configuration blocked"),
+      });
+    } finally {
+      output.mockRestore();
+    }
+  });
+
+  it("fails closed on an unsafe disconnect transition without echoing recovery authority", () => {
+    const secret = "engrd_disconnect-secret-must-not-leak";
+    writeFileSync(disconnectTransitionPath(), `not-json ${secret}\n`, { mode: 0o600 });
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      statusCommand(true);
+      const rendered = output.mock.calls.map(([value]) => String(value)).join("");
+      expect(JSON.parse(rendered)).toMatchObject({ disconnectUnsafe: true });
+      expect(rendered).not.toContain(secret);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      output.mockRestore();
+    }
+  });
+
   it("inspects both locks without configuration and never serializes capabilities", () => {
     const secret = "status-lock-capability-secret";
     mkdirSync(runnerLockPath("global"), { recursive: true, mode: 0o700 });

@@ -444,6 +444,15 @@ export function serviceDisabledState(): boolean | null {
   return match ? match[1]!.toLowerCase() === "true" : false;
 }
 
+/** Restore launchd enabled/disabled intent without starting the service. */
+export function setServiceDisabled(disabled: boolean): { ok: boolean; note: string } {
+  if (process.platform !== "darwin") return { ok: false, note: "native service is macOS-only" };
+  const result = launchctl(disabled ? "disable" : "enable", serviceTarget());
+  return result.status === 0
+    ? { ok: true, note: `${SERVICE_LABEL} ${disabled ? "disabled" : "enabled"}` }
+    : { ok: false, note: `launchctl ${disabled ? "disable" : "enable"} failed: ${result.out.trim().slice(0, 300)}` };
+}
+
 export type ServiceTransitionBeginDeps = {
   stop: () => { status: number | null; out: string };
   onQuiesced: () => void;

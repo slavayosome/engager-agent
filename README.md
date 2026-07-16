@@ -58,6 +58,8 @@ engager-agent doctor --json
 engager-agent run                     # foreground control loop
 engager-agent run --once              # same claim/lease/receipt path, one claim maximum
 engager-agent status [--json]
+engager-agent disconnect [--json]     # owner-approved credential revocation + teardown
+engager-agent errors [--json]         # stable error-code catalog and recovery guidance
 engager-agent logs [--tail 80]        # sanitized local logs
 engager-agent pause [--for 2h]
 engager-agent resume
@@ -87,11 +89,15 @@ Only one work-producing process may hold a runner identity locally. Foreground, 
 - `~/.engager/agent.json` — credential and org-level configuration (`0600`)
 - `~/.engager/status.json` — atomic health/status snapshot
 - `~/.engager/active-work.json` — exact leased recovery journal (`0600`)
+- `~/.engager/disconnect-transition.json` — private crash-recovery authority while owner-approved teardown is pending
+- `~/.engager/disconnect-receipt.json` — sanitized retained proof after teardown
 - `~/.engager/locks/` — home-global singleton ownership (one credential/journal authority at a time)
 - `~/.engager/logs/` — sanitized logs (`0700` directory, `0600` files)
 - `~/.engager/runtime/` — verified versioned service payloads
 
 Provider quota exhaustion and transient overload idle without triggering the generic permanent halt. Repeated contract, sandbox, or invalid-output failures halt loudly after three cycles. A server stop directive halts regardless of its reason code. Resume only after `engager-agent doctor` explains and clears the cause.
+
+`engager-agent disconnect` fences new work and lifecycle mutations, quiesces the foreground/service runner, then asks the signed-in project owner to approve revocation. Only the initial request uses the runner bearer. Polling, receipt acknowledgement, and crash recovery are bound to a private device challenge, so an approved disconnect can finish after the key is revoked or `agent.json` is gone. Denial or expiry restores the captured service intent. Approval removes the credential, active-work journal, markers, status, and installed service only after the exact receipt is durably validated and acknowledged.
 
 ## Publishing and contract coordination
 
@@ -104,7 +110,7 @@ Release order is strict:
 3. smoke-test and SHA-256 verify that one immutable tarball;
 4. publish that exact tarball with lifecycle scripts disabled so it cannot rebuild after verification.
 
-The shipped runner is one standalone bundle with zero runtime npm dependencies. `prepublishOnly` and `release:pack` both enforce the reviewed contract pin; the release workflow publishes only the tarball recorded in `release-artifact/manifest.json`.
+The shipped runner is one standalone bundle with zero runtime npm dependencies. `npm run bundle:check` rebuilds into a temporary directory and byte-compares both checked-in executables with current source. `prepublishOnly` and `release:pack` enforce that freshness gate plus the reviewed contract pin; the release workflow publishes only the tarball recorded in `release-artifact/manifest.json`.
 
 ## LinkedIn risk
 

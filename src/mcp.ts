@@ -42,7 +42,9 @@ import { RunnerFault, redact, sanitizeTerminalText } from "./errors.js";
 import { isSafeMcpUrl } from "./config.js";
 import { boundedFetch } from "./http.js";
 import {
+  RUNNER_SETUP_PROOF_TOOL_NAMES,
   classifyRunnerSurface,
+  isV2RunnerSurface,
   parseNegotiatedDirective,
   type NegotiatedDirective,
   type RunnerSurface,
@@ -143,9 +145,9 @@ export class EngagerMcp {
     const negotiated = parseNegotiatedDirective(
       await this.callJson("report_runner_status", heartbeat as unknown as Record<string, unknown>),
     );
-    if (negotiated.protocol === "2.1" && this.surfaceValue !== "v2") {
+    if (negotiated.protocol === "2.1" && !isV2RunnerSurface(this.surfaceValue)) {
       const surface = await this.reconnect();
-      if (surface !== "v2") {
+      if (!isV2RunnerSurface(surface)) {
         throw new RunnerFault(
           "CONTRACT_UPGRADE_REQUIRED",
           "server accepted protocol 2.1 but did not expose the leased runner surface",
@@ -230,11 +232,25 @@ export class EngagerMcp {
   }
 
   private async v2Call(name: string, input: object): Promise<unknown> {
-    if (this.surfaceValue !== "v2") {
+    if (!isV2RunnerSurface(this.surfaceValue)) {
       throw new RunnerFault("CONTRACT_UPGRADE_REQUIRED", `${name} requires the v2.1 runner surface`, {
         impact: "No runner mutation was attempted.",
         recovery: "Negotiate protocol 2.1 and reconnect before claiming work.",
       });
+    }
+    if (
+      this.surfaceValue === "v2-setup-proof" &&
+      !(RUNNER_SETUP_PROOF_TOOL_NAMES as readonly string[]).includes(name)
+    ) {
+      throw new RunnerFault(
+        "CONTRACT_UPGRADE_REQUIRED",
+        `${name} is outside the purpose-bound setup-proof surface`,
+        {
+          impact: "No production drafting or reply operation was attempted.",
+          recovery:
+            "Finish the exact setup proof first; reconnect only after Engager accepts it.",
+        },
+      );
     }
     return this.callJson(name, input as Record<string, unknown>);
   }

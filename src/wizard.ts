@@ -5,14 +5,19 @@ import {
   engineConfigDirFromEnvironment,
   engineConfigEnvironmentName,
   finalizeAcknowledgedDeviceConfig,
+  invalidateDisconnectReceiptBeforeCredentialMint,
   isSafeEngineConfigDir,
   isSafeMcpUrl,
   isValidRunnerId,
+  loadConfig,
+  loadPartialConfig,
+  sameConfigSnapshot,
   saveConfig,
   savePartialConfig,
   withoutPendingSetupProof,
   type AgentConfig,
   type PendingDeviceAck,
+  type StoredConfig,
 } from "./config.js";
 import { describeSource, detectEndpoints, type DetectedEndpoint } from "./detect.js";
 import {
@@ -26,7 +31,7 @@ import {
 } from "./deviceauth.js";
 import { engineFor } from "./engines/index.js";
 import type { EngineDetection, EngineName } from "./engine.js";
-import { asRunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
+import { RunnerFault, asRunnerFault, formatRunnerFault, sanitizeTerminalText } from "./errors.js";
 import type { ExecutionOutcome } from "./executor.js";
 import { runControlCycle } from "./loop.js";
 import { clearJournal, prepareSetupJournal } from "./journal.js";
@@ -41,6 +46,26 @@ export type SetupCredentialPlan = {
   reusingExistingCredential: boolean;
   replacingCredential: boolean;
 };
+
+export function assertSetupConfigSnapshot(
+  existing: StoredConfig | AgentConfig | undefined,
+  deps: { load: typeof loadConfig; loadPartial: typeof loadPartialConfig } = {
+    load: loadConfig,
+    loadPartial: loadPartialConfig,
+  },
+): void {
+  const fencedSnapshot = deps.load() ?? deps.loadPartial() ?? undefined;
+  if (sameConfigSnapshot(existing, fencedSnapshot)) return;
+  throw new RunnerFault(
+    "RUNNER_NOT_CONFIGURED",
+    "runner configuration changed while setup was waiting for the execution fence",
+    {
+      impact: "Setup did not reuse, replace, or request a credential from the stale snapshot.",
+      recovery: "Inspect `engager-agent status`, then restart setup from the current local state.",
+      retryable: true,
+    },
+  );
+}
 
 export function settleAcceptedSetupProof(
   config: AgentConfig,
@@ -201,6 +226,7 @@ export async function runWizard(
   const runnerId = isValidRunnerId(existing?.runnerId) ? existing.runnerId : createRunnerId();
   const setupLock = acquireRunnerLock(runnerId);
   try {
+    assertSetupConfigSnapshot(existing);
     const recovery = prepareSetupJournal();
     if (recovery.state === "blocked") {
       p.log.error(
@@ -382,6 +408,8 @@ export async function runWizard(
         check.stop(
           surface === "v2"
             ? "Connected to the leased v2.1 runner surface."
+            : surface === "v2-setup-proof"
+              ? "Connected to the purpose-bound v2.1 setup-proof surface."
             : "Connected to the version-negotiation surface.",
         );
         connected = true;
@@ -619,6 +647,10 @@ async function acquireKey(
   runnerId: string,
   setupProofOrganizationId?: string,
 ): Promise<DeviceApprovedGrant> {
+  // A completion receipt belongs to the prior credential generation. Clear it
+  // before the server can mint a later bearer, so a crash after browser
+  // approval cannot make that live key look disconnected locally.
+  invalidateDisconnectReceiptBeforeCredentialMint();
   const spinner = p.spinner();
   spinner.start("Requesting a least-privilege runner sign-in code…");
   let start: DeviceStart;

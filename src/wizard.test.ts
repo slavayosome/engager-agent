@@ -3,6 +3,7 @@ import type { AgentConfig } from "./config.js";
 import type { AgentEngine, EngineName } from "./engine.js";
 import type { ExecutionOutcome } from "./executor.js";
 import {
+  assertSetupConfigSnapshot,
   detectSetupEngines,
   isAcceptedSetupProof,
   planSetupCredential,
@@ -34,6 +35,26 @@ function outcome(status: "completed" | "partial" | "failed"): ExecutionOutcome {
 }
 
 describe("setup proof arming gate", () => {
+  it("does not authorize from a snapshot removed while setup waited for execution", () => {
+    const existing: AgentConfig = {
+      configVersion: 2,
+      mcpUrl: "https://engager.test/mcp",
+      apiKey: "eng_live_stale-setup-key",
+      credentialProfile: "runner",
+      runnerId: "setup-stale-runner",
+      engine: "claude",
+      enginePath: "/opt/homebrew/bin/claude",
+      model: "sonnet",
+      maxTurns: 4,
+      dailySessionCap: 24,
+      sessionTimeoutMinutes: 20,
+    };
+    expect(() => assertSetupConfigSnapshot(existing, {
+      load: () => null,
+      loadPartial: () => null,
+    })).toThrow(expect.objectContaining({ code: "RUNNER_NOT_CONFIGURED" }));
+  });
+
   it("arms only on an exact completed setup-proof receipt", () => {
     expect(isAcceptedSetupProof(outcome("completed"))).toBe(true);
     expect(isAcceptedSetupProof(outcome("partial"))).toBe(false);

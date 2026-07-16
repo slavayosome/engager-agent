@@ -1,13 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentConfig } from "./config.js";
 import {
   runOnce,
+  runForeground,
+  main,
   setupProofOrganizationIdFromArgs,
   USAGE,
   type RunOnceDeps,
+  type RunForegroundDeps,
 } from "./cli.js";
 import { RunnerFault } from "./errors.js";
 import type { RunnerStatus } from "./status.js";
+import { disconnectTransitionPath } from "./disconnect-transition.js";
+import { configPath } from "./config.js";
 
 const config: AgentConfig = {
   configVersion: 2,
@@ -70,12 +78,209 @@ function dependencies(overrides: Partial<RunOnceDeps> = {}) {
     markHalt,
     sessions: vi.fn(() => 0),
     output,
+    event: vi.fn(),
     ...overrides,
   };
   return { deps, persisted, markHalt, terminal };
 }
 
+describe("operator CLI contracts", () => {
+  it("fences setup before provider detection or authorization while disconnect is pending", async () => {
+    const priorHome = process.env.ENGAGER_AGENT_HOME;
+    process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-cli-setup-disconnect-"));
+    try {
+      writeFileSync(disconnectTransitionPath(), "{}\n", { mode: 0o600 });
+      await expect(main(["setup"])).rejects.toMatchObject({ code: "DISCONNECT_PENDING" });
+    } finally {
+      if (priorHome === undefined) delete process.env.ENGAGER_AGENT_HOME;
+      else process.env.ENGAGER_AGENT_HOME = priorHome;
+    }
+  });
+
+  it("renders a useful secret-free JSON disconnect failure without configuration", async () => {
+    const priorHome = process.env.ENGAGER_AGENT_HOME;
+    process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-cli-disconnect-json-"));
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await main(["disconnect", "--json"]);
+      const rendered = output.mock.calls.map(([value]) => String(value)).join("");
+      expect(JSON.parse(rendered)).toMatchObject({
+        ok: false,
+        error: { code: "RUNNER_NOT_CONFIGURED", recovery: expect.any(String) },
+      });
+      expect(rendered).not.toMatch(/apiKey|engrd_|engra_|Bearer/i);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      output.mockRestore();
+      if (priorHome === undefined) delete process.env.ENGAGER_AGENT_HOME;
+      else process.env.ENGAGER_AGENT_HOME = priorHome;
+    }
+  });
+
+  it("sanitizes corrupt recovery authority and pending setup secrets in JSON faults", async () => {
+    const priorHome = process.env.ENGAGER_AGENT_HOME;
+    process.env.ENGAGER_AGENT_HOME = mkdtempSync(join(tmpdir(), "engager-cli-disconnect-corrupt-"));
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const apiKey = "custom-pending-runner-secret";
+    const deviceCode = `engd_${"d".repeat(43)}`;
+    const ackToken = `engda_${"a".repeat(43)}`;
+    try {
+      writeFileSync(configPath(), `${JSON.stringify({
+        apiKey,
+        pendingDeviceAck: { deviceCode, ackToken, deliveryExpiresAt: Date.now() + 60_000 },
+      })}\n`, { mode: 0o600 });
+      writeFileSync(
+        disconnectTransitionPath(),
+        `not-json ${apiKey} ${deviceCode} ${ackToken} eng_live_${"x".repeat(32)}\n`,
+        { mode: 0o600 },
+      );
+      await main(["disconnect", "--json"]);
+      const rendered = output.mock.calls.map(([value]) => String(value)).join("");
+      expect(JSON.parse(rendered)).toMatchObject({
+        ok: false,
+        error: { code: "DISCONNECT_PROTOCOL_ERROR" },
+      });
+      expect(rendered).not.toContain(apiKey);
+      expect(rendered).not.toContain(deviceCode);
+      expect(rendered).not.toContain(ackToken);
+      expect(rendered).not.toContain(`eng_live_${"x".repeat(32)}`);
+    } finally {
+      output.mockRestore();
+      if (priorHome === undefined) delete process.env.ENGAGER_AGENT_HOME;
+      else process.env.ENGAGER_AGENT_HOME = priorHome;
+    }
+  });
+
+  it("emits the exhaustive stable error catalog as JSON", async () => {
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await main(["errors", "--json"]);
+      const rendered = output.mock.calls.map(([value]) => String(value)).join("");
+      const parsed = JSON.parse(rendered);
+      expect(parsed.schemaVersion).toBe(1);
+      expect(parsed.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "DISCONNECT_PENDING" }),
+        expect.objectContaining({ code: "INTERNAL_ERROR" }),
+      ]));
+    } finally {
+      output.mockRestore();
+    }
+  });
+});
+
 describe("run --once parity", () => {
+  it("does not poll when disconnect removes config between snapshot and execution lock", async () => {
+    let reads = 0;
+    const cycle = vi.fn();
+    const release = vi.fn();
+    const fixture = dependencies({
+      load: () => (++reads === 1 ? config : null),
+      lock: () => ({
+        path: "/tmp/test.lock",
+        owner: {
+          pid: process.pid,
+          token: "test-token",
+          runnerId: config.runnerId,
+          startedAt: Date.now(),
+          processIdentity: "test-process",
+        },
+        release,
+      }),
+      cycle,
+    });
+
+    await expect(runOnce(fixture.deps)).rejects.toMatchObject({ code: "RUNNER_NOT_CONFIGURED" });
+    expect(cycle).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("honors a halt committed by the prior execution owner before lock handoff", async () => {
+    let halted = false;
+    const cycle = vi.fn();
+    const release = vi.fn();
+    const fixture = dependencies({
+      halt: () => halted ? { at: 1, reason: "prior owner halted" } : null,
+      lock: () => {
+        halted = true;
+        return {
+          path: "/tmp/test.lock",
+          owner: {
+            pid: process.pid,
+            token: "test-token",
+            runnerId: config.runnerId,
+            startedAt: Date.now(),
+            processIdentity: "test-process",
+          },
+          release,
+        };
+      },
+      cycle,
+    });
+
+    await expect(runOnce(fixture.deps)).rejects.toThrow("prior owner halted");
+    expect(cycle).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("honors a pause committed before execution-lock handoff", async () => {
+    let paused = false;
+    const cycle = vi.fn(async (_config, _version, _state, options) => {
+      expect(options.allowWork).toBe(false);
+      return {
+        protocol: "2.1" as const,
+        quotaState: { status: "available" as const, observedAt: Date.now() },
+        outcome: { ran: false, ok: true, note: "paused" },
+      };
+    });
+    const fixture = dependencies({
+      pause: () => paused ? { id: "pause-after-wait", at: 1 } : null,
+      lock: () => {
+        paused = true;
+        return {
+          path: "/tmp/test.lock",
+          owner: {
+            pid: process.pid,
+            token: "test-token",
+            runnerId: config.runnerId,
+            startedAt: Date.now(),
+            processIdentity: "test-process",
+          },
+          release: vi.fn(),
+        };
+      },
+      cycle,
+    });
+
+    await runOnce(fixture.deps);
+    expect(cycle).toHaveBeenCalledOnce();
+  });
+
+  it("does not start a foreground loop from a stale pre-disconnect snapshot", async () => {
+    let reads = 0;
+    const loop = vi.fn();
+    const release = vi.fn();
+    const deps: RunForegroundDeps = {
+      load: () => (++reads === 1 ? config : null),
+      lock: () => ({
+        path: "/tmp/test.lock",
+        owner: {
+          pid: process.pid,
+          token: "test-token",
+          runnerId: config.runnerId,
+          startedAt: Date.now(),
+          processIdentity: "test-process",
+        },
+        release,
+      }),
+      loop,
+      output: vi.fn(),
+    };
+
+    await expect(runForeground(false, deps)).rejects.toMatchObject({ code: "RUNNER_NOT_CONFIGURED" });
+    expect(loop).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it("claims only setup-proof work and clears the local binding after an accepted receipt", async () => {
     const pendingConfig: AgentConfig = {
       ...config,

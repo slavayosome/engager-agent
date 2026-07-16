@@ -1,5 +1,6 @@
 import type { AgentConfig } from "./config.js";
-import { configFileMode } from "./config.js";
+import { configFileMode, configPathPresent } from "./config.js";
+import { readDisconnectTransition, readSanitizedDisconnectReceipt, safeDisconnectProgress, type DisconnectTransition } from "./disconnect-transition.js";
 import { engineFor } from "./engines/index.js";
 import { isEngineReady } from "./engine.js";
 import { asRunnerFault } from "./errors.js";
@@ -34,9 +35,17 @@ export async function runDoctor(
   now: number = Date.now(),
 ): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
+  let activeDisconnectPhase: DisconnectTransition["phase"] | null = null;
+  try {
+    activeDisconnectPhase = readDisconnectTransition()?.phase ?? null;
+  } catch {
+    /* dedicated check below reports unsafe transition state */
+  }
   addRecoveryCheck(checks, config, now);
   addLockChecks(checks, config);
   checks.push(diagnoseUpgradeTransition());
+  checks.push(diagnoseDisconnectTransition());
+  checks.push(diagnoseDisconnectReceipt());
   try {
     const sessions = providerSessionsToday(now);
     checks.push({
@@ -54,18 +63,46 @@ export async function runDoctor(
   }
   if (!config) {
     const mode = configFileMode();
+    const configPresent = configPathPresent();
+    let completedDisconnect: ReturnType<typeof readSanitizedDisconnectReceipt> = null;
+    try {
+      completedDisconnect = readSanitizedDisconnectReceipt();
+    } catch {
+      /* the dedicated receipt check reports unsafe retained evidence */
+    }
+    const bearerlessRecovery = activeDisconnectPhase === "pending" || activeDisconnectPhase === "approved" || activeDisconnectPhase === "acknowledged";
+    const preStartRecovery = activeDisconnectPhase === "prepared" || activeDisconnectPhase === "quiesced";
     checks.push({
       name: "configuration",
-      status: "fail",
+      status: configPresent && mode !== 0o600
+        ? "fail"
+        : completedDisconnect && !activeDisconnectPhase && !configPresent
+          ? "pass"
+          : bearerlessRecovery
+            ? "warn"
+            : "fail",
       detail:
-        mode != null && mode !== 0o600
-          ? `agent.json is unsafe (${mode.toString(8)}); the runner refused to read or transmit its credential`
+        configPresent && mode !== 0o600
+          ? `agent.json is unsafe${mode == null ? " or not a regular file" : ` (${mode.toString(8)})`}; the runner refused to read or transmit its credential`
+          : bearerlessRecovery
+            ? `agent.json is unavailable; phase ${activeDisconnectPhase} recovery is bearerless and remains available from the private challenge journal`
+          : completedDisconnect && !activeDisconnectPhase && !configPresent
+            ? `agent.json is absent because runner disconnect receipt ${completedDisconnect.receiptId} completed local teardown`
+          : preStartRecovery
+            ? `agent.json is unavailable but phase ${activeDisconnectPhase} still requires the exact original credential binding`
           : "runner is not configured or the saved configuration is invalid",
       recovery:
-        mode != null && mode !== 0o600
-          ? "Run `chmod 600 ~/.engager/agent.json`, then rerun doctor."
+        configPresent && mode !== 0o600
+          ? "Repair agent.json into an owned private 0600 regular file, then rerun doctor."
+          : bearerlessRecovery
+            ? "Rerun `engager-agent disconnect`; do not create replacement credentials or replace the recovery journal."
+          : completedDisconnect && !activeDisconnectPhase && !configPresent
+            ? "No action is required; run `engager-agent setup` only to connect this machine again."
+          : preStartRecovery
+            ? "Restore the exact original private agent.json, then rerun `engager-agent disconnect`."
           : "Run `engager-agent setup`.",
     });
+    checks.push(diagnoseService());
     return report(checks);
   }
   checks.push({
@@ -74,6 +111,25 @@ export async function runDoctor(
     detail: configMode() === 0o600 ? "agent.json is private (0600)" : "agent.json permissions are not 0600",
     ...(configMode() === 0o600 ? {} : { recovery: "Run `chmod 600 ~/.engager/agent.json`." }),
   });
+
+  if (activeDisconnectPhase) {
+    checks.push(
+      {
+        name: `engine:${config.engine}`,
+        status: "warn",
+        detail: `provider detection skipped while disconnect recovery is at phase ${activeDisconnectPhase}`,
+        recovery: "Rerun `engager-agent disconnect` before provider diagnostics.",
+      },
+      {
+        name: "server",
+        status: "warn",
+        detail: `credential probe skipped while disconnect recovery is at phase ${activeDisconnectPhase}`,
+        recovery: "Rerun `engager-agent disconnect`; its bearerless recovery path remains authoritative.",
+      },
+      diagnoseService(),
+    );
+    return report(checks);
+  }
 
   const engine = await engineFor(
     config.engine,
@@ -110,6 +166,8 @@ export async function runDoctor(
       detail:
         surface === "v2"
           ? "authenticated; leased protocol 2.1 surface is active"
+          : surface === "v2-setup-proof"
+            ? "authenticated; purpose-bound setup-proof surface is active"
           : "authenticated; legacy/bootstrap surface will negotiate on run",
     });
   } catch (error) {
@@ -124,8 +182,14 @@ export async function runDoctor(
     await mcp.close();
   }
 
+  checks.push(diagnoseService());
+
+  return report(checks);
+}
+
+function diagnoseService(): DoctorCheck {
   const service = serviceState();
-  checks.push({
+  return {
     name: "service",
     status: !service.supported || (service.installed && !service.entryExists) ? "warn" : "pass",
     detail: !service.supported
@@ -138,9 +202,7 @@ export async function runDoctor(
     ...(service.installed && !service.entryExists
       ? { recovery: "Run `engager-agent service install --repair`." }
       : {}),
-  });
-
-  return report(checks);
+  };
 }
 
 export function diagnoseUpgradeTransition(): DoctorCheck {
@@ -165,6 +227,60 @@ export function diagnoseUpgradeTransition(): DoctorCheck {
       status: "fail",
       detail: "upgrade-transition.json is corrupt, unsafe, or not a private regular file",
       recovery: "Preserve the journal and run `engager-agent service repair` or `engager-agent upgrade` after repairing ~/.engager ownership/permissions.",
+    };
+  }
+}
+
+export function diagnoseDisconnectTransition(): DoctorCheck {
+  try {
+    const transition = readDisconnectTransition();
+    if (!transition) {
+      return {
+        name: "disconnect-transition",
+        status: "pass",
+        detail: "no interrupted runner disconnect",
+      };
+    }
+    const safe = safeDisconnectProgress(transition);
+    const approval = safe.verificationUri && safe.userCode
+      ? `; owner approval ${safe.verificationUri} code ${safe.userCode}`
+      : "";
+    return {
+      name: "disconnect-transition",
+      status: "fail",
+      detail: `runner disconnect remains at phase ${safe.phase}${approval}`,
+      recovery: "Rerun `engager-agent disconnect`; execution and lifecycle mutations remain fail-closed until recovery completes.",
+    };
+  } catch {
+    return {
+      name: "disconnect-transition",
+      status: "fail",
+      detail: "disconnect-transition.json is corrupt, unsafe, or not a private regular file",
+      recovery: "Preserve the journal, repair ~/.engager ownership/permissions, and rerun `engager-agent disconnect`.",
+    };
+  }
+}
+
+export function diagnoseDisconnectReceipt(): DoctorCheck {
+  try {
+    const receipt = readSanitizedDisconnectReceipt();
+    return receipt
+      ? {
+          name: "disconnect-receipt",
+          status: "pass",
+          detail: `acknowledged receipt ${receipt.receiptId} is retained without bearer or device authority`,
+        }
+      : {
+          name: "disconnect-receipt",
+          status: "pass",
+          detail: "no completed disconnect receipt",
+        };
+  } catch {
+    return {
+      name: "disconnect-receipt",
+      status: "fail",
+      detail: "disconnect-receipt.json is corrupt, unsafe, or not a private regular file",
+      recovery: "Preserve the receipt and repair ~/.engager ownership/permissions before trusting local teardown evidence.",
     };
   }
 }

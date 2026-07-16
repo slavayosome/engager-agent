@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RunnerWorkOrderSchema } from "@engager/runner-contract";
-import type { AgentConfig } from "./config.js";
-import { diagnoseRecoveryJournal, diagnoseUpgradeTransition, runDoctor } from "./doctor.js";
+import { saveConfig, type AgentConfig } from "./config.js";
+import { diagnoseDisconnectTransition, diagnoseRecoveryJournal, diagnoseUpgradeTransition, runDoctor } from "./doctor.js";
+import { credentialFingerprint, disconnectTransitionPath, writeDisconnectTransition } from "./disconnect-transition.js";
 import {
   JOURNAL_EXPIRY_SKEW_MS,
   journalPath,
@@ -67,6 +68,69 @@ function seedJournal(): void {
 }
 
 describe("doctor recovery diagnostics", () => {
+  it("recovers a pending disconnect without config while never exposing device or ACK authority", async () => {
+    const deviceCode = `engrd_${"a".repeat(43)}`;
+    writeDisconnectTransition({
+      schemaVersion: 1,
+      protocolVersion: 1,
+      phase: "pending",
+      createdAt: NOW,
+      clientRequestId: "11111111-1111-4111-8111-111111111111",
+      mcpUrl: config.mcpUrl,
+      runnerId: config.runnerId,
+      credentialFingerprint: credentialFingerprint(config.apiKey),
+      priorService: { supported: true, installed: true, entryExists: true, loaded: true, disabled: false },
+      start: {
+        protocolVersion: 1,
+        status: "pending",
+        requestId: "22222222-2222-4222-8222-222222222222",
+        clientRequestId: "11111111-1111-4111-8111-111111111111",
+        organizationId: "33333333-3333-4333-8333-333333333333",
+        runnerId: config.runnerId,
+        credentialKeyId: "44444444-4444-4444-8444-444444444444",
+        credentialFingerprint: credentialFingerprint(config.apiKey),
+        deviceCode,
+        userCode: "ABCDE-23456",
+        verificationUri: "https://engager.test/runner-disconnect?code=ABCDE-23456",
+        expiresAt: NOW + 900_000,
+        intervalSec: 5,
+      },
+    });
+    expect(diagnoseDisconnectTransition()).toMatchObject({
+      name: "disconnect-transition",
+      status: "fail",
+      detail: expect.stringContaining("ABCDE-23456"),
+    });
+    const report = await runDoctor(null, NOW);
+    expect(JSON.stringify(report)).not.toContain(deviceCode);
+    expect(JSON.stringify(report)).not.toContain(config.apiKey);
+    expect(report.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "configuration",
+        status: "warn",
+        recovery: expect.stringContaining("engager-agent disconnect"),
+      }),
+      expect.objectContaining({ name: "service" }),
+    ]));
+    expect(report.checks.find((check) => check.name === "configuration")?.recovery).not.toContain("setup");
+    saveConfig(config);
+    const configuredReport = await runDoctor(config, NOW);
+    expect(configuredReport.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: `engine:${config.engine}`, status: "warn", detail: expect.stringContaining("skipped") }),
+      expect.objectContaining({ name: "server", status: "warn", detail: expect.stringContaining("skipped") }),
+    ]));
+  });
+
+  it("fails closed on an unsafe disconnect journal without echoing its contents", async () => {
+    const secret = "disconnect-secret-must-not-leak";
+    writeFileSync(disconnectTransitionPath(), `not-json ${secret}\n`, { mode: 0o600 });
+    const report = await runDoctor(null, NOW);
+    expect(report.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "disconnect-transition", status: "fail" }),
+    ]));
+    expect(JSON.stringify(report)).not.toContain(secret);
+  });
+
   it("distinguishes a recoverable live journal from a changed/revoked credential", () => {
     seedJournal();
     expect(diagnoseRecoveryJournal(config, NOW)).toMatchObject({ status: "warn" });

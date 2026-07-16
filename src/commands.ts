@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { agentHome, configFileMode, loadConfig } from "./config.js";
-import { redact, sanitizeTerminalText } from "./errors.js";
-import { log } from "./log.js";
+import { agentHome, configFileMode, configPathPresent, loadConfig } from "./config.js";
+import { hasDisconnectTransition, readDisconnectTransition, readSanitizedDisconnectReceipt, safeDisconnectProgress } from "./disconnect-transition.js";
+import { sanitizeSensitiveText } from "./errors.js";
+import { log, logEvent, redactionSecrets } from "./log.js";
 import {
   diagnoseLock,
   inspectMaintenanceLock,
@@ -13,6 +14,7 @@ import { serviceState } from "./service.js";
 import { readStatus, writeStatus } from "./status.js";
 import {
   ensureServiceInstalledWithMaintenance,
+  pauseAgentWithMaintenance,
   resumeAgentWithMaintenance,
   startServiceWithMaintenance,
   stopAgentWithMaintenance,
@@ -28,9 +30,27 @@ const fmtAge = (timestamp: number, now: number): string => {
 
 export function statusCommand(json: boolean): void {
   const transitionPending = hasUpgradeTransition();
-  if (transitionPending) process.exitCode = 1;
+  let disconnectTransition: ReturnType<typeof safeDisconnectProgress> | null = null;
+  let disconnectUnsafe = false;
+  let disconnectReceipt: ReturnType<typeof readSanitizedDisconnectReceipt> = null;
+  let disconnectReceiptUnsafe = false;
+  try {
+    const transition = readDisconnectTransition();
+    disconnectTransition = transition ? safeDisconnectProgress(transition) : null;
+  } catch {
+    disconnectUnsafe = true;
+  }
+  try {
+    disconnectReceipt = readSanitizedDisconnectReceipt();
+  } catch {
+    disconnectReceiptUnsafe = true;
+  }
   const now = Date.now();
   const config = loadConfig();
+  const mode = configFileMode();
+  const configPresent = configPathPresent();
+  const disconnectReceiptSafetyBlock = disconnectReceiptUnsafe && !config && !configPresent && !disconnectTransition;
+  if (transitionPending || disconnectTransition || disconnectUnsafe || disconnectReceiptSafetyBlock) process.exitCode = 1;
   const status = readStatus();
   const halt = readHalt();
   const pause = readPause(now);
@@ -45,14 +65,24 @@ export function statusCommand(json: boolean): void {
     executionLock.pid === status.pid;
   const verdict = unsafeLock
     ? "LOCK SAFETY BLOCK — run `engager-agent doctor` before any lifecycle action"
+    : disconnectUnsafe
+    ? "DISCONNECT SAFETY BLOCK — preserve disconnect-transition.json and run `engager-agent doctor`"
+    : disconnectReceiptSafetyBlock
+    ? "DISCONNECT RECEIPT SAFETY BLOCK — preserve disconnect-receipt.json and run `engager-agent doctor`"
+    : disconnectTransition
+    ? `DISCONNECT PENDING (${disconnectTransition.phase}) — rerun \`engager-agent disconnect\``
     : transitionPending
     ? "UPGRADE RECOVERY REQUIRED — run `engager-agent upgrade`, `engager-agent start`, or `engager-agent service repair`"
     : halt
     ? `HALTED — ${halt.reason}`
     : !config
-      ? configFileMode() != null && configFileMode() !== 0o600
-        ? "configuration blocked — agent.json must be 0600"
-        : "not configured"
+      ? configPresent
+        ? mode !== 0o600
+          ? "configuration blocked — agent.json must be 0600"
+          : "configuration is invalid — preserve agent.json and run doctor"
+        : disconnectReceipt
+          ? `disconnected — receipt ${disconnectReceipt.receiptId}`
+          : "not configured"
       : alive
         ? pause
           ? "paused locally"
@@ -72,7 +102,7 @@ export function statusCommand(json: boolean): void {
     : null;
   if (json) {
     process.stdout.write(
-      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service, transitionPending, locks: { execution: executionLock, maintenance: maintenanceLock } }, null, 2)}\n`,
+      `${JSON.stringify({ now, verdict, alive, config: safeConfig, status, halt, pause, service, transitionPending, disconnectTransition, disconnectUnsafe, disconnectReceipt, disconnectReceiptUnsafe, disconnectReceiptSafetyBlock, locks: { execution: executionLock, maintenance: maintenanceLock } }, null, 2)}\n`,
     );
     return;
   }
@@ -103,6 +133,12 @@ export function statusCommand(json: boolean): void {
     }
     if (status.nextPollAt && alive) lines.push(`  next control poll ${new Date(status.nextPollAt).toLocaleTimeString()}`);
   }
+  if (disconnectTransition?.verificationUri && disconnectTransition.userCode) {
+    lines.push(`  disconnect approval ${disconnectTransition.verificationUri} · code ${disconnectTransition.userCode}`);
+  }
+  if (!config && !configPresent && !disconnectTransition && disconnectReceipt) {
+    lines.push(`  disconnect receipt ${disconnectReceipt.receiptId} · acknowledged ${new Date(disconnectReceipt.completedAt).toISOString()}`);
+  }
   lines.push(
     `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`,
   );
@@ -110,24 +146,49 @@ export function statusCommand(json: boolean): void {
     `  locks execution ${executionLock.state}${executionLock.pid ? ` (pid ${executionLock.pid})` : ""} · maintenance ${maintenanceLock.state}${maintenanceLock.pid ? ` (pid ${maintenanceLock.pid})` : ""}`,
   );
   lines.push(
-    config ? "  next: engager-agent doctor" : "  next: engager-agent setup",
+    config
+      ? "  next: engager-agent doctor"
+      : !configPresent && disconnectReceipt
+        ? "  next: no action required; run setup only to reconnect"
+        : "  next: engager-agent setup",
   );
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-export function pauseCommand(duration?: string): void {
+export type PauseCommandDeps = {
+  pause: typeof pauseAgentWithMaintenance;
+  write: typeof writePause;
+  now: () => number;
+  output: typeof log;
+};
+
+const REAL_PAUSE_DEPS: PauseCommandDeps = {
+  pause: pauseAgentWithMaintenance,
+  write: writePause,
+  now: Date.now,
+  output: log,
+};
+
+export function pauseCommand(
+  duration?: string,
+  deps: PauseCommandDeps = REAL_PAUSE_DEPS,
+): void {
   let until: number | undefined;
   if (duration) {
     const milliseconds = parseDuration(duration);
     if (milliseconds == null) {
-      log(`could not parse duration "${duration}" — use 30m, 2h, or 1d`);
+      deps.output(`could not parse duration "${sanitizeSensitiveText(duration)}" — use 30m, 2h, or 1d`);
       process.exitCode = 1;
       return;
     }
-    until = Date.now() + milliseconds;
+    until = deps.now() + milliseconds;
   }
-  writePause(until);
-  log(`paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}`);
+  const result = deps.pause(() => deps.write(until));
+  deps.output(result.ok
+    ? `paused${until ? ` until ${new Date(until).toLocaleString()}` : " until resumed"}`
+    : result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "pause", detail: result.note });
+  if (!result.ok) process.exitCode = 1;
 }
 
 export type ResumeCommandDeps = {
@@ -167,6 +228,7 @@ export function resumeCommand(deps: ResumeCommandDeps = REAL_RESUME_DEPS): void 
     }
   });
   deps.output(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "resume", detail: result.note });
   if (!result.ok) process.exitCode = 1;
 }
 
@@ -183,14 +245,16 @@ const REAL_STOP_DEPS: StopCommandDeps = {
 export function stopCommand(deps: StopCommandDeps = REAL_STOP_DEPS): void {
   const result = deps.stop();
   deps.output(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "stop", detail: result.note });
   if (!result.ok) process.exitCode = 1;
 }
 
 export function startCommand(): boolean {
   const state = serviceState();
-  if (!shouldEnterServiceLifecycle(state.installed, hasUpgradeTransition())) return false;
+  if (!shouldEnterServiceLifecycle(state.installed, hasUpgradeTransition() || hasDisconnectTransition())) return false;
   const result = startServiceWithMaintenance();
   log(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: "start", detail: result.note });
   if (!result.ok) process.exitCode = 1;
   return true;
 }
@@ -221,6 +285,7 @@ export function serviceCommand(action: string | undefined, version: string): voi
     return;
   }
   log(result.note);
+  logEvent({ event: "lifecycle.result", level: result.ok ? "info" : "error", phase: `service:${action}`, detail: result.note });
   if (!result.ok) process.exitCode = 1;
 }
 
@@ -243,12 +308,10 @@ export function logsCommand(lines = 80): void {
 }
 
 export function sanitizeLogText(value: string): string {
-  const redacted = redact(value, [loadConfig()?.apiKey])
-    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]")
-    .replace(/("?(?:api[_-]?key|token|secret)"?\s*[:=]\s*)"?[^\s",}]+"?/gi, "$1[REDACTED]");
-  return redacted
+  const secrets = redactionSecrets();
+  return value
     .split(/\r?\n/)
-    .map((line) => sanitizeTerminalText(line))
+    .map((line) => sanitizeSensitiveText(line, secrets))
     .join("\n");
 }
 

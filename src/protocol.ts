@@ -20,7 +20,22 @@ export const RUNNER_SUPPORTED_VERSION = Object.freeze({
 });
 
 export type RunnerProtocol = "v1" | "2.1";
-export type RunnerSurface = "v1-or-bootstrap" | "v2";
+export const RUNNER_SETUP_PROOF_TOOL_NAMES = Object.freeze([
+  "report_runner_status",
+  "claim_runner_work",
+  "renew_runner_lease",
+  "get_runner_work_context",
+  "runner_submit_triage",
+  "complete_runner_work",
+] as const);
+
+export type RunnerSurface = "v1-or-bootstrap" | "v2" | "v2-setup-proof";
+
+export function isV2RunnerSurface(
+  surface: RunnerSurface | null,
+): surface is "v2" | "v2-setup-proof" {
+  return surface === "v2" || surface === "v2-setup-proof";
+}
 
 const V1TriageSchema = z
   .object({
@@ -78,9 +93,14 @@ export function parseNegotiatedDirective(value: unknown): NegotiatedDirective {
 }
 
 export function classifyRunnerSurface(names: readonly string[]): RunnerSurface {
-  const actual = [...new Set(names)].sort();
+  // Tool names are an exact capability envelope. Duplicates are malformed too:
+  // accepting them would make this comparison a set-membership check instead
+  // of the reviewed wire-surface equality check it is meant to be.
+  const actual = [...names].sort();
   const v2 = [...RUNNER_V2_TOOL_NAMES].sort();
   if (sameStrings(actual, v2)) return "v2";
+  const setupProof = [...RUNNER_SETUP_PROOF_TOOL_NAMES].sort();
+  if (sameStrings(actual, setupProof)) return "v2-setup-proof";
   const v1 = [...RUNNER_V1_TOOL_NAMES].sort();
   if (sameStrings(actual, v1)) return "v1-or-bootstrap";
   throw new Error(

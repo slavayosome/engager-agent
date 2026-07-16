@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { writePrivateJsonDurably } from "./durable.js";
+import { isDeepStrictEqual } from "node:util";
+import { removePathDurably, writePrivateJsonDurably } from "./durable.js";
 import type { EngineName } from "./engine.js";
 
 /**
@@ -80,6 +81,20 @@ export function agentHome(): string {
 
 export function configPath(): string {
   return join(agentHome(), "agent.json");
+}
+
+function disconnectReceiptPathForConfigGeneration(): string {
+  return join(agentHome(), "disconnect-receipt.json");
+}
+
+export function configPathPresent(): boolean {
+  try {
+    lstatSync(configPath());
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    return true;
+  }
 }
 
 function normalizeConfig(raw: StoredConfig): AgentConfig | null {
@@ -164,7 +179,40 @@ export function saveConfig(config: AgentConfig): void {
 }
 
 function writeConfig(value: unknown): void {
+  if (carriesCredential(value)) invalidateDisconnectReceiptBeforeCredentialMint();
   writePrivateJsonDurably(configPath(), value);
+}
+
+function carriesCredential(value: unknown): boolean {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof (value as { apiKey?: unknown }).apiKey === "string" &&
+      (value as { apiKey: string }).apiKey.length > 0,
+  );
+}
+
+/** A completion receipt proves teardown only for the credential generation it
+ * followed. Remove that tombstone durably before committing any later bearer,
+ * so config loss can never make an old receipt impersonate current revocation. */
+export function invalidateDisconnectReceiptBeforeCredentialMint(): void {
+  const path = disconnectReceiptPathForConfigGeneration();
+  try {
+    lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  removePathDurably(path);
+}
+
+/** Exact in-memory generation comparison used after acquiring an execution or
+ * maintenance fence. This includes the bearer without ever rendering it. */
+export function sameConfigSnapshot(
+  left: StoredConfig | AgentConfig | null | undefined,
+  right: StoredConfig | AgentConfig | null | undefined,
+): boolean {
+  return isDeepStrictEqual(left ?? null, right ?? null);
 }
 
 /** Whatever is stored, complete or not; setup uses this to resume browser auth. */
