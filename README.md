@@ -84,6 +84,23 @@ Linux supports foreground or external-scheduler execution. Windows execution fai
 
 Only one work-producing process may hold a runner identity locally. Foreground, service, setup proof, and `run --once` share the same atomic singleton lock.
 
+## Upgrading
+
+`npm install -g engager-agent@latest` (or a fresh `npx engager-agent@latest`)
+updates the CLI only. The background service keeps executing its own durable
+payload until you refresh it:
+
+```
+npm install -g engager-agent@latest
+engager-agent upgrade        # stages, self-tests, and activates the new payload
+engager-agent status         # confirms CLI and service payload versions match
+```
+
+`engager-agent status` prints a WARNING whenever the running service payload
+version differs from the CLI version, so skew is never silent. `upgrade`
+preserves a rollback target; `engager-agent service repair` restores a broken
+entry.
+
 ## State and recovery
 
 - `~/.engager/agent.json` — credential and org-level configuration (`0600`)

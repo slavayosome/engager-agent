@@ -1,6 +1,6 @@
 {
   "name": "engager-agent",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Least-privilege local executor for Engager's leased Candidate, drafting, and reply work orders using Claude or Codex.",
   "license": "MIT",
   "author": "Slava Nikitin <nikswpe@gmail.com>",
@@ -37,10 +37,10 @@
     "access": "public"
   },
   "engagerRunnerContract": {
-    "packageVersion": "1.1.0",
+    "packageVersion": "1.2.0",
     "protocolVersion": "2.1",
-    "vendoredArchive": "vendor/engager-runner-contract-1.1.0.tgz",
-    "sha256": "07ec2dfa97ab6234b3acb9544ad3ecaa886bee9e72c63007ec609d1460c62344"
+    "vendoredArchive": "vendor/engager-runner-contract-1.2.0.tgz",
+    "sha256": "805021d9a3f50b7c9cc83164c5154dafbafc0e1d294d1a87eb4c5a68184b5de1"
   },
   "scripts": {
     "build": "rm -rf dist bundle && tsc -p tsconfig.build.json && node scripts/build-bundle.mjs",
@@ -59,7 +59,7 @@
   },
   "devDependencies": {
     "@clack/prompts": "^0.11.0",
-    "@engager/runner-contract": "file:vendor/engager-runner-contract-1.1.0.tgz",
+    "@engager/runner-contract": "file:vendor/engager-runner-contract-1.2.0.tgz",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^22.10.7",
     "esbuild": "^0.25.0",

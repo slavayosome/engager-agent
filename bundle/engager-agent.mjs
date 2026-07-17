@@ -11615,6 +11615,7 @@ var RUNNER_ERROR_CODES = [
   "ENGINE_UNSUPPORTED_VERSION",
   "ENGINE_AUTH_REQUIRED",
   "ENGINE_QUOTA",
+  "LOCAL_SESSION_CAP",
   "ENGINE_OVERLOADED",
   "ENGINE_NETWORK",
   "ENGINE_TIMEOUT",
@@ -11647,6 +11648,7 @@ var RUNNER_ERROR_CATALOG = {
   ENGINE_UNSUPPORTED_VERSION: { summary: "The provider CLI version is outside the certified range.", defaultRecovery: "Install a supported provider CLI version.", retryable: false },
   ENGINE_AUTH_REQUIRED: { summary: "The provider CLI is not authenticated.", defaultRecovery: "Authenticate the provider CLI and rerun doctor.", retryable: false },
   ENGINE_QUOTA: { summary: "The provider reported an allowance or quota boundary.", defaultRecovery: "Wait for provider allowance to reset.", retryable: true },
+  LOCAL_SESSION_CAP: { summary: "The runner's own daily session budget is used up (not a provider quota).", defaultRecovery: "Raise dailySessionCap in the runner config or wait for the daily budget to reset at UTC midnight; manual runs still work.", retryable: true },
   ENGINE_OVERLOADED: { summary: "The provider is temporarily overloaded.", defaultRecovery: "Retry after the provider recovers.", retryable: true },
   ENGINE_NETWORK: { summary: "The provider could not be reached safely.", defaultRecovery: "Check provider connectivity and retry.", retryable: true },
   ENGINE_TIMEOUT: { summary: "The provider process exceeded its deadline.", defaultRecovery: "Inspect provider health and retry only when safe.", retryable: true },
@@ -12442,7 +12444,7 @@ import { basename, dirname as dirname2, isAbsolute as isAbsolute2, join as join8
 import { fileURLToPath } from "node:url";
 
 // src/version.ts
-var AGENT_VERSION = true ? "0.9.0" : "0.9.0";
+var AGENT_VERSION = true ? "0.9.1" : "0.9.1";
 
 // src/service.ts
 var SERVICE_LABEL = "com.engager.agent";
@@ -12739,14 +12741,22 @@ function runBoundedServiceCommand(executable, args, timeoutMs, spawn3 = spawnSyn
     out: timeout ? `${executable} timed out after ${timeoutMs}ms` : `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? String(result.error.message) : ""}`
   };
 }
+function activePayloadVersion() {
+  const target = readSymlink(join8(runtimeRoot(), "current"));
+  if (!target) return null;
+  const match = /^(\d+\.\d+\.\d+)-[0-9a-f]{16}$/.exec(basename(target));
+  return match ? match[1] : null;
+}
 function serviceState() {
   const installed = existsSync6(plistPath());
   const entryExists = existsSync6(serviceEntryPath());
+  const payloadVersion = activePayloadVersion();
   if (process.platform !== "darwin") {
-    return { supported: false, installed, entryExists, loaded: false };
+    return { supported: false, installed, entryExists, loaded: false, payloadVersion };
   }
   const result = launchctl("print", serviceTarget());
-  if (result.status !== 0) return { supported: true, installed, entryExists, loaded: false };
+  if (result.status !== 0)
+    return { supported: true, installed, entryExists, loaded: false, payloadVersion };
   const pid = /\bpid\s*=\s*(\d+)/.exec(result.out)?.[1];
   const numericPid = pid ? Number(pid) : void 0;
   return {
@@ -12754,7 +12764,8 @@ function serviceState() {
     installed,
     entryExists,
     loaded: numericPid != null && pidAlive(numericPid),
-    ...numericPid != null ? { pid: numericPid } : {}
+    ...numericPid != null ? { pid: numericPid } : {},
+    payloadVersion
   };
 }
 function serviceDisabledState() {
@@ -13756,60 +13767,6 @@ var RUNNER_CONTRACT_COMPATIBILITY = Object.freeze({
   }),
   unsupportedBehavior: "upgrade_required_idle"
 });
-var RUNNER_CONTRACT_HEALTH = Object.freeze({
-  current: Object.freeze({
-    major: RUNNER_CONTRACT_MAJOR,
-    minor: RUNNER_CONTRACT_MINOR,
-    version: RUNNER_CONTRACT_VERSION
-  }),
-  supportedRanges: Object.freeze([
-    Object.freeze({
-      major: RUNNER_CONTRACT_MAJOR,
-      minimumMinor: RUNNER_CONTRACT_MINOR,
-      maximumMinor: null
-    })
-  ])
-});
-var RunnerContractHealthSchema = external_exports.object({
-  current: external_exports.object({
-    major: external_exports.literal(RUNNER_CONTRACT_MAJOR),
-    minor: external_exports.number().int().min(RUNNER_CONTRACT_MINOR).safe(),
-    version: external_exports.string().regex(/^2\.\d+$/)
-  }).passthrough(),
-  supportedRanges: external_exports.array(external_exports.object({
-    major: external_exports.number().int().positive().safe(),
-    minimumMinor: external_exports.number().int().nonnegative().safe(),
-    maximumMinor: external_exports.number().int().nonnegative().safe().nullable()
-  }).passthrough().superRefine((range, ctx) => {
-    if (range.maximumMinor !== null && range.maximumMinor < range.minimumMinor) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: ["maximumMinor"],
-        message: "maximumMinor must not be below minimumMinor"
-      });
-    }
-  })).min(1)
-}).passthrough().superRefine((contract, ctx) => {
-  const compatible = contract.supportedRanges.some((range) => range.major === RUNNER_CONTRACT_MAJOR && range.minimumMinor <= RUNNER_CONTRACT_MINOR && (range.maximumMinor === null || range.maximumMinor >= RUNNER_CONTRACT_MINOR));
-  if (!compatible) {
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      path: ["supportedRanges"],
-      message: "server no longer advertises compatibility with runner v2.1"
-    });
-  }
-});
-var RunnerDoctorHealthSchema = external_exports.object({
-  serverTime: external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  runnerContract: RunnerContractHealthSchema,
-  release: external_exports.union([
-    external_exports.object({
-      environment: external_exports.enum(["dev", "prod"]),
-      releaseSha: external_exports.string().min(1)
-    }).passthrough(),
-    external_exports.object({ environment: external_exports.null(), releaseSha: external_exports.null() }).passthrough()
-  ])
-}).passthrough();
 var RunnerProtocolVersionSchema = external_exports.object({
   major: external_exports.number().int().positive().safe(),
   minor: external_exports.number().int().nonnegative().safe()
@@ -14394,7 +14351,14 @@ var RunnerHeartbeatOutcomeSchema = external_exports.object({
   // cannot sever the remote stop/control channel forever.
   note: external_exports.string()
 }).strict();
-var RunnerQuotaStateSchema = JsonObjectSchema.superRefine((value, ctx) => {
+var RUNNER_QUOTA_STATUSES = [
+  "available",
+  "unavailable",
+  "exhausted",
+  "error",
+  "healthy"
+];
+var quotaStateByteCap = (value, ctx) => {
   const bytes = new TextEncoder().encode(JSON.stringify(value)).byteLength;
   if (bytes > RUNNER_HEARTBEAT_QUOTA_MAX_BYTES) {
     ctx.addIssue({
@@ -14405,7 +14369,15 @@ var RunnerQuotaStateSchema = JsonObjectSchema.superRefine((value, ctx) => {
       message: `quotaState must be at most ${RUNNER_HEARTBEAT_QUOTA_MAX_BYTES} serialized bytes`
     });
   }
-});
+};
+var KnownRunnerQuotaStateSchema = external_exports.object({
+  status: external_exports.enum(RUNNER_QUOTA_STATUSES),
+  reasonCode: external_exports.string().min(1).max(200).optional(),
+  resetsAt: external_exports.number().nonnegative().safe().optional(),
+  observedAt: external_exports.number().nonnegative().safe().optional()
+}).passthrough();
+var RunnerQuotaStateUnionSchema = external_exports.union([KnownRunnerQuotaStateSchema, JsonObjectSchema]).superRefine(quotaStateByteCap);
+var RunnerQuotaStateSchema = JsonObjectSchema.superRefine(quotaStateByteCap);
 var RunnerHeartbeatInputSchema = external_exports.object({
   runnerId: external_exports.string().trim().min(1).max(200),
   state: RunnerStateSchema,
@@ -14427,7 +14399,9 @@ var RunnerHeartbeatInputSchema = external_exports.object({
 }).strict();
 
 // node_modules/@engager/runner-contract/dist/responses.js
-var ProtocolTag = { contractVersion: external_exports.literal(RUNNER_CONTRACT_MAJOR) };
+var ProtocolTag = {
+  contractVersion: external_exports.literal(RUNNER_CONTRACT_MAJOR)
+};
 var DirectiveFields = {
   ...ProtocolTag,
   reason: external_exports.string().trim().min(1).max(500),
@@ -14462,7 +14436,10 @@ var EmptyClaimResponseSchema = external_exports.object({
   nextPollAt: EpochMsSchema.optional(),
   workOrder: external_exports.null()
 }).strict();
-var RunnerClaimResponseSchema = external_exports.discriminatedUnion("status", [ClaimedResponseSchema, EmptyClaimResponseSchema]).superRefine((claim, ctx) => {
+var RunnerClaimResponseSchema = external_exports.discriminatedUnion("status", [
+  ClaimedResponseSchema,
+  EmptyClaimResponseSchema
+]).superRefine((claim, ctx) => {
   if (claim.status !== "claimed")
     return;
   if (claim.claimedAt < claim.workOrder.notBefore) {
@@ -14513,7 +14490,12 @@ var RunnerLeaseResponseSchema = external_exports.discriminatedUnion("status", [
     });
   }
 });
-var RunnerEventItemTypeSchema = external_exports.enum(["candidate", "incoming", "message", "system"]);
+var RunnerEventItemTypeSchema = external_exports.enum([
+  "candidate",
+  "incoming",
+  "message",
+  "system"
+]);
 var RunnerEventActionSchema = external_exports.enum([
   "claimed",
   "context_read",
@@ -14683,7 +14665,10 @@ var ReplyReceiptObjectSchema = external_exports.object({
 var TriageReceiptSchema = TriageReceiptObjectSchema.superRefine(receiptSummaryIssues);
 var RunnerDraftReceiptSchema = DraftReceiptObjectSchema.superRefine(receiptSummaryIssues);
 var RunnerDiscoverDraftReceiptSchema = DiscoverDraftReceiptObjectSchema.superRefine(receiptSummaryIssues);
-var DraftReceiptSchema = external_exports.discriminatedUnion("lane", [DraftReceiptObjectSchema, DiscoverDraftReceiptObjectSchema]).superRefine(receiptSummaryIssues);
+var DraftReceiptSchema = external_exports.discriminatedUnion("lane", [
+  DraftReceiptObjectSchema,
+  DiscoverDraftReceiptObjectSchema
+]).superRefine(receiptSummaryIssues);
 var ReplyReceiptSchema = ReplyReceiptObjectSchema.superRefine(receiptSummaryIssues);
 var RunnerReceiptSchema = external_exports.union([
   TriageReceiptObjectSchema,
@@ -14751,6 +14736,9 @@ var RunnerErrorEnvelopeSchema = external_exports.object({
   status: external_exports.number().int().min(100).max(599),
   recovery: external_exports.string().trim().min(1).max(1e3).optional(),
   retryable: external_exports.boolean().optional(),
+  /** Server proved no immutable receipt existed before evaluating this
+   * setup-proof submission. Literal true only; absence means unknown. */
+  receiptAbsent: external_exports.literal(true).optional(),
   reference: external_exports.string().trim().min(1).max(200).optional()
 }).strict();
 var RunnerWireResponseSchema = external_exports.union([
@@ -14835,11 +14823,23 @@ var NormalizedRunnerAuthoredTextSchema = external_exports.string().trim().min(1)
 var RunnerAuthoredTextSchema = external_exports.string().refine((value) => runnerAuthoredTextCharacterViolation(value) === null, {
   message: RUNNER_AUTHORED_TEXT_CHARACTER_ERROR
 }).pipe(NormalizedRunnerAuthoredTextSchema);
+var RUNNER_TRIAGE_ANGLE_MAX_CHARS = 280;
+function sanitizeTriageAngle(value) {
+  if (typeof value !== "string")
+    return void 0;
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  if (collapsed.length === 0)
+    return void 0;
+  return collapsed.length > RUNNER_TRIAGE_ANGLE_MAX_CHARS ? collapsed.slice(0, RUNNER_TRIAGE_ANGLE_MAX_CHARS) : collapsed;
+}
 var TriageItemObjectSchema = external_exports.object({
   candidateId: DatabaseIdSchema,
   verdict: external_exports.enum(["match", "reject"]),
   score: external_exports.number().min(0).max(1).optional(),
-  reason: external_exports.string().trim().min(1).max(200).optional()
+  reason: external_exports.string().trim().min(1).max(200).optional(),
+  /** One-line suggested contribution angle for THIS post (match verdicts).
+   * Bonus data — see sanitizeTriageAngle; never fails the item. */
+  angle: external_exports.unknown().optional().transform(sanitizeTriageAngle)
 }).strict();
 var RunnerTriageItemSchema = TriageItemObjectSchema.superRefine((item, ctx) => {
   if (item.verdict === "match" && item.score === void 0) {
@@ -16014,7 +16014,10 @@ function statusCommand(json) {
     lines.push(`  disconnect receipt ${disconnectReceipt.receiptId} \xB7 acknowledged ${new Date(disconnectReceipt.completedAt).toISOString()}`);
   }
   lines.push(
-    `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`
+    `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`,
+    ...service.payloadVersion && service.payloadVersion !== AGENT_VERSION ? [
+      `  WARNING: service payload ${service.payloadVersion} != CLI ${AGENT_VERSION} \u2014 the service keeps running the old version until you run \`engager-agent upgrade\``
+    ] : []
   );
   lines.push(
     `  locks execution ${executionLock.state}${executionLock.pid ? ` (pid ${executionLock.pid})` : ""} \xB7 maintenance ${maintenanceLock.state}${maintenanceLock.pid ? ` (pid ${maintenanceLock.pid})` : ""}`
@@ -16477,7 +16480,10 @@ function proposalJsonSchema(lane) {
                   candidateId: { type: "integer", minimum: 1 },
                   verdict: { const: "match" },
                   score: { type: "number", minimum: 0, maximum: 1 },
-                  reason: string4(200)
+                  reason: string4(200),
+                  // Contract 1.2.0 (additive): one-line per-post contribution
+                  // angle. Bonus data — the server clamps/drops it tolerantly.
+                  angle: string4(280)
                 }
               },
               {
@@ -27212,7 +27218,7 @@ import { join as join14 } from "node:path";
 // src/prompt.ts
 var MAX_ENGINE_PROMPT_BYTES = 512 * 1024;
 var LANE_INSTRUCTIONS = {
-  triage: "Judge relevance only. Return one match/reject verdict for every remaining candidate. A match requires score 0..1; a reject requires a short relevance reason. Do not draft comments.",
+  triage: "Judge relevance only. Return one match/reject verdict for every remaining candidate. A match requires score 0..1 and should include angle: one line (max 280 chars) suggesting the user's specific contribution to THIS post, grounded in the post plus their product facts \u2014 never a generic pitch; omit it only when you have nothing specific. A reject requires a short relevance reason. Do not draft comments.",
   draft: "Select the strongest remaining matched candidates and draft no more than maxItems. Apply sharedEffectiveDraftingContext and the item's disjoint effectiveDraftingContext together, then follow both exactly. Do not triage, reply, research the web, or invent sources.",
   discover_draft: "Draft only the explicitly requested remaining candidates, up to maxItems. Apply sharedEffectiveDraftingContext and the item's disjoint effectiveDraftingContext together, then follow both exactly. Do not triage, fill a schedule, research the web, or invent sources.",
   reply: "For every remaining incoming comment, choose reply or dismiss. Follow replyDraftingContext and replyPolicy exactly. Hold sensitive replies when instructed. Do not draft new post comments."
@@ -28110,9 +28116,13 @@ async function runControlCycle(config2, version2, state, options = {}, deps = RE
           impact: "The recovery journal was retained without starting cognition.",
           recovery: "Run `engager-agent doctor`, repair the engine, then retry."
         }
-      ) : localCapped || quotaBlock ? new RunnerFault("ENGINE_QUOTA", "provider cognition is currently quota-blocked", {
+      ) : localCapped ? new RunnerFault("LOCAL_SESSION_CAP", "the runner's local daily session budget is used up", {
         impact: "Receipt recovery may continue, but no new cognition was started.",
-        recovery: "Wait for the local day boundary or raise the explicit local cap.",
+        recovery: "Raise dailySessionCap in the runner config or wait for the UTC-midnight reset; manual runs still work.",
+        retryable: true
+      }) : quotaBlock ? new RunnerFault("ENGINE_QUOTA", "provider cognition is currently quota-blocked", {
+        impact: "Receipt recovery may continue, but no new cognition was started.",
+        recovery: "Wait for the provider allowance to reset.",
         retryable: true
       }) : new RunnerFault("RUNNER_PAUSED", "runner is paused locally", {
         impact: "Receipt recovery may continue, but no new cognition was started.",
@@ -28159,7 +28169,7 @@ async function runControlCycle(config2, version2, state, options = {}, deps = RE
           ran: false,
           ok: false,
           note: `local daily session cap reached (${config2.dailySessionCap})`,
-          errorCode: "ENGINE_QUOTA"
+          errorCode: "LOCAL_SESSION_CAP"
         }
       };
     }
