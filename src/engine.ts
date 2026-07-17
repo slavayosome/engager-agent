@@ -690,6 +690,9 @@ export function proposalJsonSchema(lane: RunnerLane): Record<string, unknown> {
                   verdict: { const: "match" },
                   score: { type: "number", minimum: 0, maximum: 1 },
                   reason: string(200),
+                  // Contract 1.2.0 (additive): one-line per-post contribution
+                  // angle. Bonus data — the server clamps/drops it tolerantly.
+                  angle: string(280),
                 },
               },
               {

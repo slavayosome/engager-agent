@@ -175,10 +175,16 @@ export async function runControlCycle(
                 recovery: "Run `engager-agent doctor`, repair the engine, then retry.",
               },
             )
-          : localCapped || quotaBlock
+          : localCapped
+            ? new RunnerFault("LOCAL_SESSION_CAP", "the runner's local daily session budget is used up", {
+                impact: "Receipt recovery may continue, but no new cognition was started.",
+                recovery: "Raise dailySessionCap in the runner config or wait for the UTC-midnight reset; manual runs still work.",
+                retryable: true,
+              })
+            : quotaBlock
             ? new RunnerFault("ENGINE_QUOTA", "provider cognition is currently quota-blocked", {
                 impact: "Receipt recovery may continue, but no new cognition was started.",
-                recovery: "Wait for the local day boundary or raise the explicit local cap.",
+                recovery: "Wait for the provider allowance to reset.",
                 retryable: true,
               })
             : new RunnerFault("RUNNER_PAUSED", "runner is paused locally", {
@@ -233,7 +239,7 @@ export async function runControlCycle(
           ran: false,
           ok: false,
           note: `local daily session cap reached (${config.dailySessionCap})`,
-          errorCode: "ENGINE_QUOTA",
+          errorCode: "LOCAL_SESSION_CAP",
         },
       };
     }

@@ -12,7 +12,7 @@ export const MAX_ENGINE_PROMPT_BYTES = 512 * 1024;
 
 const LANE_INSTRUCTIONS: Record<RunnerWorkOrder["lane"], string> = {
   triage:
-    "Judge relevance only. Return one match/reject verdict for every remaining candidate. A match requires score 0..1; a reject requires a short relevance reason. Do not draft comments.",
+    "Judge relevance only. Return one match/reject verdict for every remaining candidate. A match requires score 0..1 and should include angle: one line (max 280 chars) suggesting the user's specific contribution to THIS post, grounded in the post plus their product facts — never a generic pitch; omit it only when you have nothing specific. A reject requires a short relevance reason. Do not draft comments.",
   draft:
     "Select the strongest remaining matched candidates and draft no more than maxItems. Apply sharedEffectiveDraftingContext and the item's disjoint effectiveDraftingContext together, then follow both exactly. Do not triage, reply, research the web, or invent sources.",
   discover_draft:

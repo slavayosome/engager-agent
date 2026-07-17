@@ -11,6 +11,7 @@ import {
 } from "./lock.js";
 import { clearHalt, clearPause, readHalt, readPause, writePause } from "./markers.js";
 import { serviceState } from "./service.js";
+import { AGENT_VERSION } from "./version.js";
 import { readStatus, writeStatus } from "./status.js";
 import {
   ensureServiceInstalledWithMaintenance,
@@ -141,6 +142,11 @@ export function statusCommand(json: boolean): void {
   }
   lines.push(
     `  service ${!service.supported ? "unsupported on this platform" : !service.installed ? "not installed" : !service.entryExists ? "BROKEN (entry missing)" : service.loaded ? `loaded${service.pid ? ` (pid ${service.pid})` : ""}` : "installed, stopped"}`,
+    ...(service.payloadVersion && service.payloadVersion !== AGENT_VERSION
+      ? [
+          `  WARNING: service payload ${service.payloadVersion} != CLI ${AGENT_VERSION} — the service keeps running the old version until you run \`engager-agent upgrade\``,
+        ]
+      : []),
   );
   lines.push(
     `  locks execution ${executionLock.state}${executionLock.pid ? ` (pid ${executionLock.pid})` : ""} · maintenance ${maintenanceLock.state}${maintenanceLock.pid ? ` (pid ${maintenanceLock.pid})` : ""}`,

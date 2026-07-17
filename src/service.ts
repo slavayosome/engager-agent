@@ -414,16 +414,29 @@ export type ServiceState = {
   entryExists: boolean;
   loaded: boolean;
   pid?: number;
+  /** Version of the ACTIVE durable payload (parsed from the runtime `current`
+   * symlink). The service keeps executing this payload after a package-manager
+   * upgrade until `engager-agent upgrade` runs — status warns on skew. */
+  payloadVersion?: string | null;
 };
+
+export function activePayloadVersion(): string | null {
+  const target = readSymlink(join(runtimeRoot(), "current"));
+  if (!target) return null;
+  const match = /^(\d+\.\d+\.\d+)-[0-9a-f]{16}$/.exec(basename(target));
+  return match ? match[1]! : null;
+}
 
 export function serviceState(): ServiceState {
   const installed = existsSync(plistPath());
   const entryExists = existsSync(serviceEntryPath());
+  const payloadVersion = activePayloadVersion();
   if (process.platform !== "darwin") {
-    return { supported: false, installed, entryExists, loaded: false };
+    return { supported: false, installed, entryExists, loaded: false, payloadVersion };
   }
   const result = launchctl("print", serviceTarget());
-  if (result.status !== 0) return { supported: true, installed, entryExists, loaded: false };
+  if (result.status !== 0)
+    return { supported: true, installed, entryExists, loaded: false, payloadVersion };
   const pid = /\bpid\s*=\s*(\d+)/.exec(result.out)?.[1];
   const numericPid = pid ? Number(pid) : undefined;
   return {
@@ -432,6 +445,7 @@ export function serviceState(): ServiceState {
     entryExists,
     loaded: numericPid != null && pidAlive(numericPid),
     ...(numericPid != null ? { pid: numericPid } : {}),
+    payloadVersion,
   };
 }
 
