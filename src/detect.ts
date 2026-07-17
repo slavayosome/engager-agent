@@ -15,7 +15,7 @@ import { desktopConfigPath, MCP_NAME, type DesktopConfig } from "./register.js";
  *   4. The Engager Cloud default
  */
 
-export const DEFAULT_CLOUD_URL = "https://mcp.yosome.online/mcp";
+export const DEFAULT_CLOUD_URL = "https://mcp.getengager.com/mcp";
 /** apps/mcp defaults to ENGAGER_MCP_HTTP_PORT=8788 in the monorepo. */
 export const LOCAL_CANDIDATE_URLS = ["http://localhost:8788/mcp"];
 
