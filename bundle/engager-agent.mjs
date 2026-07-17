@@ -13767,6 +13767,60 @@ var RUNNER_CONTRACT_COMPATIBILITY = Object.freeze({
   }),
   unsupportedBehavior: "upgrade_required_idle"
 });
+var RUNNER_CONTRACT_HEALTH = Object.freeze({
+  current: Object.freeze({
+    major: RUNNER_CONTRACT_MAJOR,
+    minor: RUNNER_CONTRACT_MINOR,
+    version: RUNNER_CONTRACT_VERSION
+  }),
+  supportedRanges: Object.freeze([
+    Object.freeze({
+      major: RUNNER_CONTRACT_MAJOR,
+      minimumMinor: RUNNER_CONTRACT_MINOR,
+      maximumMinor: null
+    })
+  ])
+});
+var RunnerContractHealthSchema = external_exports.object({
+  current: external_exports.object({
+    major: external_exports.literal(RUNNER_CONTRACT_MAJOR),
+    minor: external_exports.number().int().min(RUNNER_CONTRACT_MINOR).safe(),
+    version: external_exports.string().regex(/^2\.\d+$/)
+  }).passthrough(),
+  supportedRanges: external_exports.array(external_exports.object({
+    major: external_exports.number().int().positive().safe(),
+    minimumMinor: external_exports.number().int().nonnegative().safe(),
+    maximumMinor: external_exports.number().int().nonnegative().safe().nullable()
+  }).passthrough().superRefine((range, ctx) => {
+    if (range.maximumMinor !== null && range.maximumMinor < range.minimumMinor) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["maximumMinor"],
+        message: "maximumMinor must not be below minimumMinor"
+      });
+    }
+  })).min(1)
+}).passthrough().superRefine((contract, ctx) => {
+  const compatible = contract.supportedRanges.some((range) => range.major === RUNNER_CONTRACT_MAJOR && range.minimumMinor <= RUNNER_CONTRACT_MINOR && (range.maximumMinor === null || range.maximumMinor >= RUNNER_CONTRACT_MINOR));
+  if (!compatible) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["supportedRanges"],
+      message: "server no longer advertises compatibility with runner v2.1"
+    });
+  }
+});
+var RunnerDoctorHealthSchema = external_exports.object({
+  serverTime: external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  runnerContract: RunnerContractHealthSchema,
+  release: external_exports.union([
+    external_exports.object({
+      environment: external_exports.enum(["dev", "prod"]),
+      releaseSha: external_exports.string().min(1)
+    }).passthrough(),
+    external_exports.object({ environment: external_exports.null(), releaseSha: external_exports.null() }).passthrough()
+  ])
+}).passthrough();
 var RunnerProtocolVersionSchema = external_exports.object({
   major: external_exports.number().int().positive().safe(),
   minor: external_exports.number().int().nonnegative().safe()

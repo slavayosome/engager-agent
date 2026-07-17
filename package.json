@@ -40,7 +40,7 @@
     "packageVersion": "1.2.0",
     "protocolVersion": "2.1",
     "vendoredArchive": "vendor/engager-runner-contract-1.2.0.tgz",
-    "sha256": "805021d9a3f50b7c9cc83164c5154dafbafc0e1d294d1a87eb4c5a68184b5de1"
+    "sha256": "9ab8254f041e05e8d7ece2f4deff6761b563cf343c9ebd06769d6cc392365118"
   },
   "scripts": {
     "build": "rm -rf dist bundle && tsc -p tsconfig.build.json && node scripts/build-bundle.mjs",
